@@ -1,0 +1,28 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: minicpmo-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - minicpmo-net
+
+  livekit:
+    image: livekit/livekit-server:v1.5.3
+    container_name: minicpmo-livekit
+    restart: unless-stopped
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+      - "50200-50300:50200-50300/udp"
+    volumes:
+      - ./livekit.yaml:/livekit.yaml:ro
+    command: --config /livekit.yaml
+    networks:
+      - minicpmo-net
+
+networks:
+  minicpmo-net:
+    driver: bridge
