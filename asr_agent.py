@@ -1,13 +1,15 @@
 """
-Qwen3-ASR LiveKit Agent
+Pechi — Maruti Suzuki Service Agent
 Receives audio via LiveKit WebRTC, transcribes via vLLM on RunPod,
-sends text back via LiveKit data channel.
+passes transcript to LLM (LM Studio) for agentic response with DB search.
 """
 
 import asyncio
+import base64
 import io
 import json
 import logging
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -23,6 +25,10 @@ from livekit import api, rtc
 from pydantic import BaseModel
 from scipy.signal import resample_poly
 
+from database import init_database
+from llm_agent import LLMAgent
+from text_normalizer import normalize_asr_text
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -35,10 +41,36 @@ VLLM_URL = "https://sl6b8qqermny8m-8000.proxy.runpod.net"
 WEBRTC_SAMPLE_RATE = 48000
 TARGET_SAMPLE_RATE = 16000
 
-VAD_ENERGY_THRESHOLD = 600
+VAD_ENERGY_THRESHOLD = 1000
 VAD_SILENCE_DURATION = 0.8
 VAD_MIN_SPEECH_DURATION = 0.8
 MIN_AUDIO_SECONDS = 0.5  # skip very short clips (keystrokes, clicks)
+MIN_SPEECH_RMS = 800  # minimum average RMS to send to ASR (skip pure noise)
+
+ASR_LANGUAGES = {
+    "en": "English",
+    "hi": "Hindi",
+}
+
+
+def build_asr_prompt(language: str) -> str:
+    lang_name = ASR_LANGUAGES.get(language, "English")
+    return (
+        f"Transcribe in {lang_name}. "
+        "Use digits for all numbers (e.g. 1234 not one two three four). "
+        "Format Indian vehicle registration numbers with hyphens (e.g. MH-12-AB-1234)."
+    )
+
+# Pattern to parse Qwen3-ASR output: "language English<asr_text>..."
+ASR_OUTPUT_PATTERN = re.compile(r"language\s+\w+<asr_text>(.*)", re.DOTALL)
+
+
+def parse_asr_output(content: str) -> str:
+    """Extract transcription text from Qwen3-ASR chat completions output."""
+    m = ASR_OUTPUT_PATTERN.search(content)
+    if m:
+        return m.group(1).strip()
+    return content.strip()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,6 +85,7 @@ log = logging.getLogger("asr_agent")
 
 class LoginRequest(BaseModel):
     userId: Optional[str] = "default_user"
+    language: Optional[str] = "en"
 
 class LoginResponse(BaseModel):
     success: bool
@@ -88,24 +121,26 @@ def compute_rms(audio: np.ndarray) -> float:
     return float(np.sqrt(np.mean(audio.astype(np.float64) ** 2)))
 
 # ---------------------------------------------------------------------------
-# ASR Bot
+# ASR Bot with LLM Agent
 # ---------------------------------------------------------------------------
 
 class ASRBot:
-    def __init__(self, room_name: str, user_id: str):
+    def __init__(self, room_name: str, user_id: str, language: str = "en"):
         self.room_name = room_name
         self.user_id = user_id
+        self.language = language
         self.room = rtc.Room()
         self.stop_event = asyncio.Event()
         self.generating = False
         self.http = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
+        self.llm = LLMAgent(user_id)
         self._tasks: list[asyncio.Task] = []
 
     async def start(self):
         token = (
             api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
             .with_identity(f"asr-bot-{self.user_id[:8]}")
-            .with_name("ASR Bot")
+            .with_name("Pechi Service Agent")
             .with_grants(
                 api.VideoGrants(
                     room_join=True, room=self.room_name,
@@ -130,7 +165,12 @@ class ASRBot:
             log.error(f"vLLM not reachable: {e}")
             raise
 
-        await self._send_data({"type": "status", "text": "Ready — start speaking"})
+        # Restore LLM session from Redis if available
+        restored = await self.llm.load_from_redis()
+        if restored:
+            await self._send_data({"type": "status", "text": "Welcome back — session restored"})
+        else:
+            await self._send_data({"type": "status", "text": "Ready — start speaking"})
 
     async def _send_data(self, msg: dict):
         await self.room.local_participant.publish_data(
@@ -220,26 +260,60 @@ class ASRBot:
                 await self._send_data({"type": "status", "text": "Ready — start speaking"})
                 return
 
-            log.info(f"Transcribing {duration:.2f}s of audio")
+            # Check average energy — skip if it's just background noise
+            avg_rms = compute_rms(audio_16k)
+            if avg_rms < MIN_SPEECH_RMS:
+                log.info(f"Skipping low-energy audio (RMS={avg_rms:.0f} < {MIN_SPEECH_RMS})")
+                await self._send_data({"type": "status", "text": "Ready — start speaking"})
+                return
 
+            log.info(f"Transcribing {duration:.2f}s of audio (RMS={avg_rms:.0f})")
             await self._send_data({"type": "status", "text": "Transcribing..."})
 
-            # Encode as WAV bytes
+            # Encode as WAV bytes → base64 data URL
             wav_bytes = audio_to_wav_bytes(audio_16k, TARGET_SAMPLE_RATE)
+            audio_b64 = base64.b64encode(wav_bytes).decode()
+            audio_data_url = f"data:audio/wav;base64,{audio_b64}"
 
-            # POST to vLLM /v1/audio/transcriptions (OpenAI-compatible)
+            # Use chat completions API with system prompt for language/format control
             resp = await self.http.post(
-                f"{VLLM_URL}/v1/audio/transcriptions",
-                files={"file": ("audio.wav", wav_bytes, "audio/wav")},
-                data={"model": "Qwen/Qwen3-ASR-1.7B"},
+                f"{VLLM_URL}/v1/chat/completions",
+                json={
+                    "model": "Qwen/Qwen3-ASR-1.7B",
+                    "messages": [
+                        {"role": "system", "content": build_asr_prompt(self.language)},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "audio_url", "audio_url": {"url": audio_data_url}},
+                            ],
+                        },
+                    ],
+                    "temperature": 0.01,
+                    "max_tokens": 256,
+                },
             )
 
             if resp.status_code == 200:
                 result = resp.json()
-                text = result.get("text", "").strip()
+                raw_content = result["choices"][0]["message"]["content"]
+                text = parse_asr_output(raw_content)
                 if text:
+                    log.info(f"ASR raw: {raw_content[:150]}")
                     log.info(f"Transcription: {text}")
-                    await self._send_data({"type": "transcript", "text": text})
+                    # Normalize ASR output as fallback (spoken numbers, registration format)
+                    normalized = normalize_asr_text(text)
+                    if normalized != text:
+                        log.info(f"Normalized: {normalized}")
+                    # Send user's speech as a message
+                    await self._send_data({"type": "user_message", "text": normalized})
+
+                    # Now pass to LLM agent
+                    await self._send_data({"type": "thinking"})
+                    log.info("Sending to LLM agent...")
+                    agent_response = await self.llm.chat(normalized)
+                    log.info(f"Agent response: {agent_response[:100]}...")
+                    await self._send_data({"type": "agent_message", "text": agent_response})
                 else:
                     log.info("Empty transcription")
                     await self._send_data({"type": "status", "text": "No speech detected"})
@@ -262,6 +336,7 @@ class ASRBot:
             task.cancel()
         await self.room.disconnect()
         await self.http.aclose()
+        await self.llm.close()
         log.info("Bot stopped")
 
 # ---------------------------------------------------------------------------
@@ -273,14 +348,15 @@ active_bots: dict[str, ASRBot] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("ASR Agent starting...")
+    log.info("Pechi Service Agent starting...")
+    init_database()
     yield
     for bot in list(active_bots.values()):
         await bot.stop()
-    log.info("ASR Agent stopped")
+    log.info("Pechi Service Agent stopped")
 
 
-app = FastAPI(title="Qwen3-ASR Agent", lifespan=lifespan)
+app = FastAPI(title="Pechi Service Agent", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -292,7 +368,7 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "asr-agent", "vllm_url": VLLM_URL}
+    return {"status": "healthy", "service": "pechi-agent", "vllm_url": VLLM_URL}
 
 
 @app.post("/api/login")
@@ -316,7 +392,9 @@ async def login(req: LoginRequest):
     )
 
     # Create and start bot
-    bot = ASRBot(room_name, user_id)
+    lang = req.language or "en"
+    log.info(f"Language: {ASR_LANGUAGES.get(lang, lang)}")
+    bot = ASRBot(room_name, user_id, language=lang)
     active_bots[user_id] = bot
 
     try:

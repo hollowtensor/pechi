@@ -1,6 +1,9 @@
-export type AppState = "idle" | "connected" | "listening" | "transcribing" | "result";
+export type AppState = "idle" | "connected" | "listening" | "transcribing" | "thinking" | "result";
 
-export interface TranscriptEntry {
+export type MessageRole = "user" | "agent";
+
+export interface ChatMessage {
+  role: MessageRole;
   text: string;
   time: string;
 }

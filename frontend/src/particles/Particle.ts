@@ -77,6 +77,13 @@ export class Particle {
         this.radius += (this.baseRadius * 0.9 - this.radius) * 0.04;
         break;
 
+      case "thinking":
+        // Slower, pulsing waves — agent is processing
+        this.updateWave(dt, time, canvasW, canvasH, 0.6, 35 + Math.sin(time * 2) * 15, 20);
+        this.targetAlpha = 0.4 + Math.sin(time * 2 + this.phase) * 0.15;
+        this.radius += (this.baseRadius * 0.85 - this.radius) * 0.03;
+        break;
+
       case "result":
         this.updateBurst(dt, t);
         this.targetAlpha = Math.max(0, 0.6 - t * 0.5);

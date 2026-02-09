@@ -152,6 +152,11 @@ export class ParticleSystem {
         baseAlpha = 0.2 + Math.sin(this.time * 8) * 0.08; // fast pulse
         lineW = 1.0;
         break;
+      case "thinking":
+        maxDist = 100;
+        baseAlpha = 0.1 + Math.sin(this.time * 3) * 0.04; // slow pulse
+        lineW = 0.6;
+        break;
       case "result":
         maxDist = 100;
         baseAlpha = 0.12 * (1 - this.easeTransition()); // fade out during burst
@@ -183,7 +188,7 @@ export class ParticleSystem {
           const dist = Math.sqrt(distSq);
           const proximity = 1 - dist / maxDist;
           // Flicker: each connection has a unique phase from particle positions
-          const flicker = (this.state === "listening" || this.state === "transcribing")
+          const flicker = (this.state === "listening" || this.state === "transcribing" || this.state === "thinking")
             ? 0.5 + 0.5 * Math.sin(this.time * 6 + a.phase + b.phase)
             : 1;
           const alpha = baseAlpha * proximity * flicker;
@@ -219,6 +224,10 @@ export class ParticleSystem {
       case "transcribing":
         glowSpread = 70 + Math.sin(this.time * 6) * 15;
         glowAlpha = 0.06;
+        break;
+      case "thinking":
+        glowSpread = 80 + Math.sin(this.time * 2) * 10;
+        glowAlpha = 0.035;
         break;
       case "result": {
         const t = this.easeTransition();

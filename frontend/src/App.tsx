@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Room, RoomEvent } from "livekit-client";
+import Markdown from "react-markdown";
 import { ParticleBackground } from "./components/ParticleBackground";
-import type { AppState, TranscriptEntry } from "./types";
+import type { AppState, ChatMessage } from "./types";
 import "./App.css";
 
 const API_URL = "http://localhost:8021";
@@ -10,8 +11,9 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [status, setStatus] = useState("Ready");
-  const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [appState, setAppState] = useState<AppState>("idle");
+  const [language, setLanguage] = useState<"en" | "hi">("en");
   const roomRef = useRef<Room | null>(null);
   const userIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -21,7 +23,7 @@ export default function App() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [transcripts]);
+  }, [messages]);
 
   const handleStart = useCallback(async () => {
     setConnecting(true);
@@ -30,7 +32,7 @@ export default function App() {
       const resp = await fetch(`${API_URL}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: "user" }),
+        body: JSON.stringify({ userId: "user", language }),
       });
       const data = await resp.json();
       if (!data.success) {
@@ -49,18 +51,26 @@ export default function App() {
           if (topic !== "transcription") return;
           try {
             const msg = JSON.parse(new TextDecoder().decode(payload));
-            if (msg.type === "transcript") {
-              setTranscripts((prev) => [
+            if (msg.type === "user_message") {
+              setMessages((prev) => [
                 ...prev,
-                { text: msg.text, time: new Date().toLocaleTimeString() },
+                { role: "user", text: msg.text, time: new Date().toLocaleTimeString() },
+              ]);
+              setAppState("transcribing");
+            } else if (msg.type === "agent_message") {
+              setMessages((prev) => [
+                ...prev,
+                { role: "agent", text: msg.text, time: new Date().toLocaleTimeString() },
               ]);
               // Burst animation, then return to connected
               setAppState("result");
               clearTimeout(resultTimerRef.current);
               resultTimerRef.current = setTimeout(() => setAppState("connected"), 1500);
+            } else if (msg.type === "thinking") {
+              setAppState("thinking");
+              setStatus("Thinking...");
             } else if (msg.type === "status") {
               setStatus(msg.text);
-              // Map bot status messages to app states
               if (msg.text.includes("Listening")) {
                 setAppState("listening");
               } else if (msg.text.includes("Transcribing")) {
@@ -95,7 +105,7 @@ export default function App() {
       setConnecting(false);
       setAppState("idle");
     }
-  }, []);
+  }, [language]);
 
   const handleStop = useCallback(async () => {
     clearTimeout(resultTimerRef.current);
@@ -121,7 +131,7 @@ export default function App() {
   }, []);
 
   const handleClear = useCallback(() => {
-    setTranscripts([]);
+    setMessages([]);
   }, []);
 
   return (
@@ -131,7 +141,7 @@ export default function App() {
       <div className="app">
         <header>
           <h1 className="title">Pechi</h1>
-          <p className="tagline">Live transcription powered by Qwen3-ASR</p>
+          <p className="tagline">Maruti Suzuki Service Assistant</p>
         </header>
 
         <div className="glass-panel">
@@ -152,10 +162,26 @@ export default function App() {
             <button
               onClick={handleClear}
               className="btn btn-clear"
-              disabled={transcripts.length === 0}
+              disabled={messages.length === 0}
             >
               Clear
             </button>
+            <div className="lang-toggle">
+              <button
+                className={`lang-btn ${language === "en" ? "lang-active" : ""}`}
+                onClick={() => setLanguage("en")}
+                disabled={connected}
+              >
+                EN
+              </button>
+              <button
+                className={`lang-btn ${language === "hi" ? "lang-active" : ""}`}
+                onClick={() => setLanguage("hi")}
+                disabled={connected}
+              >
+                HI
+              </button>
+            </div>
           </div>
 
           <div className="status-bar">
@@ -163,16 +189,39 @@ export default function App() {
             <span className="status-text">{status}</span>
           </div>
 
-          <div className="transcript-container" ref={scrollRef}>
-            {transcripts.length === 0 ? (
-              <p className="placeholder">Transcriptions will appear here...</p>
+          <div className="chat-container" ref={scrollRef}>
+            {messages.length === 0 ? (
+              <p className="placeholder">
+                {connected
+                  ? "Ask about your vehicle, service history, or parts..."
+                  : "Press Start and speak to begin..."}
+              </p>
             ) : (
-              transcripts.map((t, i) => (
-                <div key={i} className="transcript-line">
-                  <span className="time">{t.time}</span>
-                  <span className="text">{t.text}</span>
+              messages.map((m, i) => (
+                <div key={i} className={`message message-${m.role}`}>
+                  <div className="message-bubble">
+                    {m.role === "agent" ? (
+                      <div className="message-text">
+                        <Markdown>{m.text}</Markdown>
+                      </div>
+                    ) : (
+                      <span className="message-text">{m.text}</span>
+                    )}
+                    <span className="message-time">{m.time}</span>
+                  </div>
                 </div>
               ))
+            )}
+            {appState === "thinking" && (
+              <div className="message message-agent">
+                <div className="message-bubble thinking-bubble">
+                  <span className="thinking-dots">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </div>
+              </div>
             )}
           </div>
         </div>
