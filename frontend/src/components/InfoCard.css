@@ -1,0 +1,266 @@
+/* -- Info Card Styles -- */
+
+.ic-section {
+  padding-top: 0.5rem;
+}
+
+.ic-subtitle {
+  font-size: 0.72rem;
+  color: rgba(240, 235, 227, 0.35);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+/* Grid (vehicle info) */
+
+.ic-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.75rem;
+}
+
+.ic-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.ic-label {
+  font-size: 0.62rem;
+  color: rgba(240, 235, 227, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ic-value {
+  font-size: 0.82rem;
+  color: rgba(240, 235, 227, 0.85);
+  font-weight: 500;
+}
+
+/* Timeline (service history) */
+
+.ic-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ic-record {
+  background: rgba(240, 235, 227, 0.025);
+  border: 1px solid rgba(240, 235, 227, 0.05);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+}
+
+.ic-record-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.2rem;
+}
+
+.ic-record-date {
+  font-size: 0.7rem;
+  color: rgba(240, 235, 227, 0.45);
+  font-weight: 600;
+}
+
+.ic-record-status {
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+.ic-status-completed {
+  background: rgba(76, 175, 80, 0.12);
+  color: rgba(76, 175, 80, 0.8);
+}
+.ic-status-scheduled {
+  background: rgba(255, 193, 7, 0.12);
+  color: rgba(255, 193, 7, 0.8);
+}
+.ic-status-in_progress {
+  background: rgba(33, 150, 243, 0.12);
+  color: rgba(33, 150, 243, 0.8);
+}
+
+.ic-record-type {
+  font-size: 0.76rem;
+  color: rgba(240, 235, 227, 0.7);
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.ic-record-desc {
+  font-size: 0.7rem;
+  color: rgba(240, 235, 227, 0.4);
+  margin-bottom: 0.3rem;
+  line-height: 1.35;
+}
+
+.ic-record-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ic-record-cost {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #d4645b;
+}
+.ic-cost-free {
+  color: rgba(76, 175, 80, 0.8);
+}
+
+.ic-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.ic-tag {
+  font-size: 0.58rem;
+  background: rgba(240, 235, 227, 0.05);
+  color: rgba(240, 235, 227, 0.35);
+  padding: 0.08rem 0.3rem;
+  border-radius: 3px;
+}
+
+.ic-record-next {
+  font-size: 0.62rem;
+  color: rgba(255, 193, 7, 0.6);
+  margin-top: 0.25rem;
+}
+
+/* Line items (parts) */
+
+.ic-line-item {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(240, 235, 227, 0.04);
+}
+.ic-line-item:last-child {
+  border-bottom: none;
+}
+
+.ic-line-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.ic-line-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.ic-line-name {
+  font-size: 0.78rem;
+  color: rgba(240, 235, 227, 0.8);
+  font-weight: 500;
+}
+
+.ic-line-sub {
+  font-size: 0.62rem;
+  color: rgba(240, 235, 227, 0.3);
+}
+
+.ic-line-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  flex-shrink: 0;
+}
+
+.ic-line-price {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(240, 235, 227, 0.7);
+  white-space: nowrap;
+}
+
+.ic-stock {
+  font-size: 0.56rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.ic-stock-yes {
+  color: rgba(76, 175, 80, 0.7);
+}
+.ic-stock-no {
+  color: rgba(244, 67, 54, 0.7);
+}
+
+.ic-line-compat {
+  font-size: 0.58rem;
+  color: rgba(240, 235, 227, 0.2);
+  margin-top: 0.15rem;
+}
+
+/* Packages */
+
+.ic-packages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ic-pkg {
+  background: rgba(240, 235, 227, 0.025);
+  border: 1px solid rgba(240, 235, 227, 0.05);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+}
+
+.ic-pkg-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.2rem;
+}
+
+.ic-pkg-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(240, 235, 227, 0.85);
+}
+
+.ic-pkg-price {
+  font-size: 0.76rem;
+  color: #d4645b;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ic-pkg-desc {
+  font-size: 0.68rem;
+  color: rgba(240, 235, 227, 0.38);
+  margin-bottom: 0.3rem;
+  line-height: 1.3;
+}
+
+.ic-pkg-list {
+  margin: 0;
+  padding-left: 0.9rem;
+  list-style: disc;
+}
+
+.ic-pkg-list li {
+  font-size: 0.68rem;
+  color: rgba(240, 235, 227, 0.5);
+  margin-bottom: 0.1rem;
+}
+
+.ic-pkg-validity {
+  font-size: 0.6rem;
+  color: rgba(240, 235, 227, 0.25);
+  margin-top: 0.3rem;
+}

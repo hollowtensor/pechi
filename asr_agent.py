@@ -25,7 +25,7 @@ from livekit import api, rtc
 from pydantic import BaseModel
 from scipy.signal import resample_poly
 
-from database import init_database
+from database import init_database, save_job_card
 from llm_agent import LLMAgent
 from text_normalizer import normalize_asr_text
 
@@ -58,7 +58,7 @@ def build_asr_prompt(language: str) -> str:
     return (
         f"Transcribe in {lang_name}. "
         "Use digits for all numbers (e.g. 1234 not one two three four). "
-        "Format Indian vehicle registration numbers with hyphens (e.g. MH-12-AB-1234)."
+        "Format Indian vehicle registration numbers with hyphens (e.g. XX-00-YY-0000)."
     )
 
 # Pattern to parse Qwen3-ASR output: "language English<asr_text>..."
@@ -133,7 +133,7 @@ class ASRBot:
         self.stop_event = asyncio.Event()
         self.generating = False
         self.http = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
-        self.llm = LLMAgent(user_id)
+        self.llm = LLMAgent(user_id, send_data_callback=self._send_data)
         self._tasks: list[asyncio.Task] = []
 
     async def start(self):
@@ -152,6 +152,7 @@ class ASRBot:
 
         self.room.on("track_subscribed")(self._on_track_subscribed)
         self.room.on("disconnected")(self._on_disconnected)
+        self.room.on("data_received")(self._on_data_received)
 
         await self.room.connect(LIVEKIT_URL, token)
         log.info(f"Bot connected to room {self.room_name}")
@@ -189,6 +190,38 @@ class ASRBot:
             )
             task = asyncio.create_task(self._process_audio(audio_stream))
             self._tasks.append(task)
+
+    def _on_data_received(self, packet: rtc.DataPacket):
+        """Handle incoming data from user (e.g., job card confirmations)."""
+        if packet.topic != "user_action":
+            return
+        try:
+            msg = json.loads(packet.data.decode())
+            if msg.get("type") == "confirm_job_card":
+                asyncio.create_task(self._handle_job_card_confirmation(msg["data"]))
+        except Exception as e:
+            log.error(f"Data receive error: {e}")
+
+    async def _handle_job_card_confirmation(self, data: dict):
+        """Save confirmed job card to database."""
+        try:
+            job_id = save_job_card(data)
+            log.info(f"Job card #{job_id} saved")
+            await self._send_data({
+                "type": "job_card_confirmed",
+                "jobId": job_id,
+            })
+            await self._send_data({
+                "type": "agent_message",
+                "text": (
+                    f"Your service booking is confirmed! Job card **#{job_id}** has been created "
+                    f"for **{data['vehicle']['registrationNo']}** on **{data.get('preferredDate', 'TBD')}**. "
+                    f"We'll send you a reminder before your appointment."
+                ),
+            })
+        except Exception as e:
+            log.error(f"Job card save error: {e}", exc_info=True)
+            await self._send_data({"type": "error", "text": f"Failed to save booking: {e}"})
 
     def _on_disconnected(self, reason):
         log.info(f"Room disconnected: {reason}")

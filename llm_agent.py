@@ -11,7 +11,7 @@ from datetime import datetime
 import httpx
 import redis.asyncio as aioredis
 
-from database import execute_safe_query, get_schema_description
+from database import execute_safe_query_structured, get_schema_description, build_job_card_data
 
 log = logging.getLogger("llm_agent")
 
@@ -50,7 +50,47 @@ TOOLS = [
                 "required": ["sql_query"],
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_service_jobcard",
+            "description": (
+                "Create a service job card for the customer. This displays a visual card "
+                "on the customer's screen with vehicle info, selected services, parts, "
+                "and total cost. The customer can review, edit, and confirm the booking. "
+                "Use this ONLY after you have identified the vehicle (need vehicle_id) and "
+                "the customer has expressed intent to book a service."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "vehicle_id": {
+                        "type": "integer",
+                        "description": "The vehicle ID from the vehicles table.",
+                    },
+                    "service_package_id": {
+                        "type": "integer",
+                        "description": "Service package ID from service_packages table. Use search_database first to find the right one.",
+                    },
+                    "part_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "List of part IDs from parts table for additional parts needed.",
+                    },
+                    "preferred_date": {
+                        "type": "string",
+                        "description": "Customer's preferred service date in YYYY-MM-DD format.",
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Any additional notes or customer requests.",
+                    },
+                },
+                "required": ["vehicle_id"],
+            },
+        },
+    },
 ]
 
 BASE_SYSTEM_PROMPT = f"""You are a friendly and professional Maruti Suzuki service center assistant. Your name is Pechi.
@@ -61,6 +101,7 @@ Your role:
 - Share parts pricing and availability
 - Explain service packages and recommendations
 - Answer questions about their vehicles
+- Help customers book/schedule services
 
 Guidelines:
 - Be polite, concise, and helpful
@@ -73,7 +114,126 @@ Guidelines:
 - If the customer asks something unrelated to car service, politely redirect them
 - You DO have conversation memory within a session. If a conversation summary or prior messages are provided below, use them. Never say you cannot remember previous messages — you can.
 
+Service booking flow:
+- When a customer wants to book a service, first identify their vehicle (registration number or name lookup)
+- Ask their preferred date if not mentioned
+- Recommend an appropriate service package using search_database (query service_packages table)
+- Once you have the vehicle_id, package, and date, you MUST call the create_service_jobcard tool. NEVER describe a job card in text — ALWAYS use the tool.
+- After calling the tool, tell the customer: "I've sent a service job card to your screen. Please review the details and click Confirm to finalize the booking."
+- Booking is ONLY completed when the customer clicks the Confirm button on the job card displayed on their screen. Do NOT treat verbal confirmation ("yes", "confirm", etc.) as a completed booking.
+- If the customer says "confirm" verbally, remind them to use the Confirm button on the card on their screen.
+- NEVER say a booking is confirmed unless you receive explicit confirmation that the job card was saved (you will see this in the conversation context).
+
 {get_schema_description()}"""
+
+
+def _classify_panel_data(columns: list[str], rows: list[dict]) -> dict | None:
+    """Classify a DB query result into a side panel message, or None if not displayable."""
+    if not rows:
+        return None
+
+    cols = {c.lower() for c in columns}
+
+    # Service history: has service_date + service_type
+    if "service_date" in cols and "service_type" in cols:
+        r0 = rows[0]
+        label = ""
+        if "model" in cols and "registration_no" in cols:
+            label = f"{r0.get('model', '')} ({r0.get('registration_no', '')})"
+        elif "registration_no" in cols:
+            label = str(r0.get("registration_no", ""))
+        return {
+            "type": "side_panel",
+            "panelType": "service_history",
+            "title": f"Service History ({len(rows)} records)",
+            "data": {
+                "vehicleLabel": label,
+                "records": [
+                    {
+                        "date": str(r.get("service_date", "")),
+                        "type": str(r.get("service_type", "")),
+                        "description": str(r.get("description", "")),
+                        "cost": float(r.get("cost", 0) or 0),
+                        "status": str(r.get("status", "")),
+                        "partsReplaced": json.loads(r["parts_replaced"]) if r.get("parts_replaced") else [],
+                        "nextServiceDate": str(r["next_service_date"]) if r.get("next_service_date") else None,
+                        "notes": str(r["notes"]) if r.get("notes") else None,
+                    }
+                    for r in rows
+                ],
+            },
+        }
+
+    # Vehicle info: has registration_no + model + customer name
+    if "registration_no" in cols and "model" in cols:
+        # Check for customer name column (could be "name" or "customer_name")
+        name_col = next((c for c in columns if "name" in c.lower()), None)
+        phone_col = next((c for c in columns if "phone" in c.lower()), None)
+        r0 = rows[0]
+        return {
+            "type": "side_panel",
+            "panelType": "vehicle_info",
+            "title": f"{r0.get('model', '')} ({r0.get('registration_no', '')})",
+            "data": {
+                "customer": {
+                    "name": str(r0.get(name_col, "")) if name_col else "",
+                    "phone": str(r0.get(phone_col, "")) if phone_col else "",
+                },
+                "vehicle": {
+                    "model": str(r0.get("model", "")),
+                    "variant": str(r0.get("variant", "")),
+                    "fuelType": str(r0.get("fuel_type", "")),
+                    "year": int(r0.get("year", 0) or 0),
+                    "registrationNo": str(r0.get("registration_no", "")),
+                    "color": str(r0.get("color", "")),
+                    "mileage": int(r0.get("current_mileage", 0) or 0),
+                },
+            },
+        }
+
+    # Parts: has part_number
+    if "part_number" in cols:
+        return {
+            "type": "side_panel",
+            "panelType": "parts_list",
+            "title": f"Parts ({len(rows)} found)",
+            "data": {
+                "parts": [
+                    {
+                        "name": str(r.get("name", "")),
+                        "partNumber": str(r.get("part_number", "")),
+                        "category": str(r.get("category", "")),
+                        "price": float(r.get("price", 0) or 0),
+                        "compatibleModels": str(r.get("compatible_models", "")),
+                        "inStock": bool(r.get("in_stock", 1)),
+                    }
+                    for r in rows
+                ],
+            },
+        }
+
+    # Service packages: has includes + applicable_models or validity_months
+    if "includes" in cols and ("applicable_models" in cols or "validity_months" in cols):
+        return {
+            "type": "side_panel",
+            "panelType": "service_packages",
+            "title": f"Service Packages ({len(rows)})",
+            "data": {
+                "packages": [
+                    {
+                        "id": int(r.get("id", 0) or 0),
+                        "name": str(r.get("name", "")),
+                        "description": str(r.get("description", "")),
+                        "price": float(r.get("price", 0) or 0),
+                        "validityMonths": int(r.get("validity_months", 0) or 0),
+                        "includes": json.loads(r["includes"]) if r.get("includes") else [],
+                    }
+                    for r in rows
+                ],
+            },
+        }
+
+    return None
 
 
 def estimate_tokens(messages: list[dict]) -> int:
@@ -91,8 +251,9 @@ def _truncate_tool_result(content: str) -> str:
 class LLMAgent:
     """Per-session LLM agent with rolling summary, customer context, and Redis persistence."""
 
-    def __init__(self, user_id: str):
+    def __init__(self, user_id: str, send_data_callback=None):
         self.user_id = user_id
+        self.send_data_callback = send_data_callback
         self.history: list[dict] = []
         self.summary: str = ""
         self.customer_context: str = ""
@@ -297,14 +458,58 @@ class LLMAgent:
                             args = json.loads(func["arguments"])
                             sql = args.get("sql_query", "")
                             log.info(f"Tool call: search_database({sql[:100]}...)")
-                            full_result = execute_safe_query(sql)
+                            result = execute_safe_query_structured(sql)
+                            full_result = result["text"]
                             log.info(f"Query result: {full_result[:200]}...")
 
                             # Try to extract customer context from results
                             self._try_extract_customer_context(full_result)
+
+                            # Send structured data to frontend as side panel
+                            if result["rows"] and self.send_data_callback:
+                                panel_msg = _classify_panel_data(result["columns"], result["rows"])
+                                if panel_msg:
+                                    log.info(f"Side panel: {panel_msg['panelType']} — {panel_msg['title']}")
+                                    await self.send_data_callback(panel_msg)
                         except (json.JSONDecodeError, KeyError) as e:
                             log.error(f"Tool call parse error: {e}")
                             full_result = "Error: Could not parse the query."
+
+                    elif tool_name == "create_service_jobcard":
+                        try:
+                            args = json.loads(func["arguments"])
+                            log.info(f"Tool call: create_service_jobcard({args})")
+                            card = build_job_card_data(
+                                vehicle_id=args["vehicle_id"],
+                                service_package_id=args.get("service_package_id"),
+                                part_ids=args.get("part_ids"),
+                                preferred_date=args.get("preferred_date", ""),
+                                notes=args.get("notes", ""),
+                            )
+                            if "error" in card:
+                                full_result = f"Error: {card['error']}"
+                            else:
+                                # Send job card to frontend as side panel
+                                if self.send_data_callback:
+                                    await self.send_data_callback({
+                                        "type": "side_panel",
+                                        "panelType": "job_card",
+                                        "title": "Service Job Card",
+                                        "isActionable": True,
+                                        "data": card,
+                                    })
+                                full_result = (
+                                    f"Job card displayed on customer's screen for {card['vehicle']['model']} "
+                                    f"({card['vehicle']['registrationNo']}). "
+                                    f"Total estimate: ₹{card['totalEstimate']:,.0f}. "
+                                    f"IMPORTANT: Tell the customer to review and click the Confirm button on their screen. "
+                                    f"Do NOT confirm the booking yourself — only the on-screen button finalizes it."
+                                )
+                                log.info(f"Job card sent: ₹{card['totalEstimate']:,.0f}")
+                        except Exception as e:
+                            log.error(f"Job card error: {e}", exc_info=True)
+                            full_result = f"Error creating job card: {e}"
+
                     else:
                         full_result = f"Error: Unknown tool '{tool_name}'"
 

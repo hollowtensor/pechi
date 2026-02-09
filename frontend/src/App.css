@@ -1,12 +1,53 @@
-.app {
+/* -- Two-column layout -- */
+
+.app-layout {
   position: relative;
   z-index: 1;
-  max-width: 600px;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  max-width: 1060px;
   margin: 0 auto;
   padding: 2.5rem 1.25rem 2rem;
   min-height: 100vh;
+  align-items: stretch;
+}
+
+.app-chat {
+  flex: 0 1 600px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+.app-side {
+  flex: 0 1 380px;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.app-side::-webkit-scrollbar {
+  width: 3px;
+}
+.app-side::-webkit-scrollbar-thumb {
+  background: rgba(240, 235, 227, 0.08);
+  border-radius: 2px;
+}
+
+@media (max-width: 960px) {
+  .app-layout {
+    flex-direction: column;
+    max-width: 600px;
+    align-items: stretch;
+  }
+  .app-side {
+    position: static;
+    max-height: none;
+    flex: none;
+  }
 }
 
 /* -- Header -- */

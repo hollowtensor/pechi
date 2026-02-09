@@ -2,7 +2,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Room, RoomEvent } from "livekit-client";
 import Markdown from "react-markdown";
 import { ParticleBackground } from "./components/ParticleBackground";
-import type { AppState, ChatMessage } from "./types";
+import { SidePanel } from "./components/SidePanel";
+import type { AppState, ChatMessage, JobCard, SidePanelItem } from "./types";
 import "./App.css";
 
 const API_URL = "http://localhost:8021";
@@ -14,6 +15,7 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [appState, setAppState] = useState<AppState>("idle");
   const [language, setLanguage] = useState<"en" | "hi">("en");
+  const [sidePanels, setSidePanels] = useState<SidePanelItem[]>([]);
   const roomRef = useRef<Room | null>(null);
   const userIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -24,6 +26,62 @@ export default function App() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // -- Side panel helpers --
+
+  const addSidePanel = useCallback(
+    (msg: { panelType: string; title: string; data: unknown; isActionable?: boolean }) => {
+      setSidePanels((prev) => {
+        const collapsed = prev.map((p) => ({ ...p, isExpanded: false }));
+        const newPanel: SidePanelItem = {
+          id: `sp-${Date.now()}`,
+          panelType: msg.panelType as SidePanelItem["panelType"],
+          title: msg.title,
+          content: { type: msg.panelType as SidePanelItem["panelType"], data: msg.data } as SidePanelItem["content"],
+          isActionable: msg.isActionable || msg.panelType === "job_card",
+          isExpanded: true,
+        };
+        return [...collapsed, newPanel];
+      });
+    },
+    [],
+  );
+
+  const handleToggleExpand = useCallback((panelId: string) => {
+    setSidePanels((prev) =>
+      prev.map((p) => (p.id === panelId ? { ...p, isExpanded: !p.isExpanded } : p)),
+    );
+  }, []);
+
+  const handleDismissPanel = useCallback((panelId: string) => {
+    setSidePanels((prev) => prev.filter((p) => p.id !== panelId));
+  }, []);
+
+  const handleConfirmJobCard = useCallback((jobCard: JobCard) => {
+    if (!roomRef.current) return;
+    roomRef.current.localParticipant.publishData(
+      new TextEncoder().encode(
+        JSON.stringify({ type: "confirm_job_card", data: jobCard }),
+      ),
+      { reliable: true, topic: "user_action" },
+    );
+  }, []);
+
+  const handleCancelJobCard = useCallback((panelId: string) => {
+    setSidePanels((prev) => prev.filter((p) => p.id !== panelId));
+  }, []);
+
+  const handleUpdateJobCard = useCallback((panelId: string, jobCard: JobCard) => {
+    setSidePanels((prev) =>
+      prev.map((p) =>
+        p.id === panelId
+          ? { ...p, content: { type: "job_card" as const, data: jobCard } }
+          : p,
+      ),
+    );
+  }, []);
+
+  // -- Connection --
 
   const handleStart = useCallback(async () => {
     setConnecting(true);
@@ -62,7 +120,6 @@ export default function App() {
                 ...prev,
                 { role: "agent", text: msg.text, time: new Date().toLocaleTimeString() },
               ]);
-              // Burst animation, then return to connected
               setAppState("result");
               clearTimeout(resultTimerRef.current);
               resultTimerRef.current = setTimeout(() => setAppState("connected"), 1500);
@@ -80,6 +137,10 @@ export default function App() {
               }
             } else if (msg.type === "error") {
               setStatus(`Error: ${msg.text}`);
+            } else if (msg.type === "side_panel") {
+              addSidePanel(msg);
+            } else if (msg.type === "job_card_confirmed") {
+              setSidePanels((prev) => prev.filter((p) => p.panelType !== "job_card"));
             }
           } catch {
             // ignore parse errors
@@ -105,7 +166,7 @@ export default function App() {
       setConnecting(false);
       setAppState("idle");
     }
-  }, [language]);
+  }, [language, addSidePanel]);
 
   const handleStop = useCallback(async () => {
     clearTimeout(resultTimerRef.current);
@@ -132,99 +193,115 @@ export default function App() {
 
   const handleClear = useCallback(() => {
     setMessages([]);
+    setSidePanels([]);
   }, []);
 
   return (
     <>
       <ParticleBackground state={appState} />
 
-      <div className="app">
-        <header>
-          <h1 className="title">Pechi</h1>
-          <p className="tagline">Maruti Suzuki Service Assistant</p>
-        </header>
+      <div className="app-layout">
+        <div className="app-chat">
+          <header>
+            <h1 className="title">Pechi</h1>
+            <p className="tagline">Maruti Suzuki Service Assistant</p>
+          </header>
 
-        <div className="glass-panel">
-          <div className="controls">
-            {!connected ? (
+          <div className="glass-panel">
+            <div className="controls">
+              {!connected ? (
+                <button
+                  onClick={handleStart}
+                  disabled={connecting}
+                  className="btn btn-start"
+                >
+                  {connecting ? "Connecting..." : "Start"}
+                </button>
+              ) : (
+                <button onClick={handleStop} className="btn btn-stop">
+                  Stop
+                </button>
+              )}
               <button
-                onClick={handleStart}
-                disabled={connecting}
-                className="btn btn-start"
+                onClick={handleClear}
+                className="btn btn-clear"
+                disabled={messages.length === 0}
               >
-                {connecting ? "Connecting..." : "Start"}
+                Clear
               </button>
-            ) : (
-              <button onClick={handleStop} className="btn btn-stop">
-                Stop
-              </button>
-            )}
-            <button
-              onClick={handleClear}
-              className="btn btn-clear"
-              disabled={messages.length === 0}
-            >
-              Clear
-            </button>
-            <div className="lang-toggle">
-              <button
-                className={`lang-btn ${language === "en" ? "lang-active" : ""}`}
-                onClick={() => setLanguage("en")}
-                disabled={connected}
-              >
-                EN
-              </button>
-              <button
-                className={`lang-btn ${language === "hi" ? "lang-active" : ""}`}
-                onClick={() => setLanguage("hi")}
-                disabled={connected}
-              >
-                HI
-              </button>
+              <div className="lang-toggle">
+                <button
+                  className={`lang-btn ${language === "en" ? "lang-active" : ""}`}
+                  onClick={() => setLanguage("en")}
+                  disabled={connected}
+                >
+                  EN
+                </button>
+                <button
+                  className={`lang-btn ${language === "hi" ? "lang-active" : ""}`}
+                  onClick={() => setLanguage("hi")}
+                  disabled={connected}
+                >
+                  HI
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div className="status-bar">
-            <span className={`dot ${connected ? "active" : ""}`} />
-            <span className="status-text">{status}</span>
-          </div>
+            <div className="status-bar">
+              <span className={`dot ${connected ? "active" : ""}`} />
+              <span className="status-text">{status}</span>
+            </div>
 
-          <div className="chat-container" ref={scrollRef}>
-            {messages.length === 0 ? (
-              <p className="placeholder">
-                {connected
-                  ? "Ask about your vehicle, service history, or parts..."
-                  : "Press Start and speak to begin..."}
-              </p>
-            ) : (
-              messages.map((m, i) => (
-                <div key={i} className={`message message-${m.role}`}>
-                  <div className="message-bubble">
-                    {m.role === "agent" ? (
-                      <div className="message-text">
-                        <Markdown>{m.text}</Markdown>
-                      </div>
-                    ) : (
-                      <span className="message-text">{m.text}</span>
-                    )}
-                    <span className="message-time">{m.time}</span>
+            <div className="chat-container" ref={scrollRef}>
+              {messages.length === 0 ? (
+                <p className="placeholder">
+                  {connected
+                    ? "Ask about your vehicle, service history, or parts..."
+                    : "Press Start and speak to begin..."}
+                </p>
+              ) : (
+                messages.map((m, i) => (
+                  <div key={i} className={`message message-${m.role}`}>
+                    <div className="message-bubble">
+                      {m.role === "agent" ? (
+                        <div className="message-text">
+                          <Markdown>{m.text}</Markdown>
+                        </div>
+                      ) : (
+                        <span className="message-text">{m.text}</span>
+                      )}
+                      <span className="message-time">{m.time}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+              {appState === "thinking" && (
+                <div className="message message-agent">
+                  <div className="message-bubble thinking-bubble">
+                    <span className="thinking-dots">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
                   </div>
                 </div>
-              ))
-            )}
-            {appState === "thinking" && (
-              <div className="message message-agent">
-                <div className="message-bubble thinking-bubble">
-                  <span className="thinking-dots">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
+
+        {sidePanels.length > 0 && (
+          <div className="app-side">
+            <SidePanel
+              panels={sidePanels}
+              onToggleExpand={handleToggleExpand}
+              onDismiss={handleDismissPanel}
+              onConfirmJobCard={handleConfirmJobCard}
+              onCancelJobCard={handleCancelJobCard}
+              onUpdateJobCard={handleUpdateJobCard}
+            />
+          </div>
+        )}
       </div>
     </>
   );

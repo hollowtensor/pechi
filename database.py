@@ -87,6 +87,19 @@ CREATE TABLE IF NOT EXISTS parts (
     price REAL,
     in_stock INTEGER DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS job_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER REFERENCES customers(id),
+    vehicle_id INTEGER REFERENCES vehicles(id),
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    preferred_date TEXT,
+    status TEXT DEFAULT 'confirmed',
+    service_items TEXT,
+    parts TEXT,
+    total_estimate REAL,
+    notes TEXT
+);
 """
 
 # ---------------------------------------------------------------------------
@@ -445,6 +458,64 @@ def execute_safe_query(sql: str) -> str:
         return f"Error: {e}"
 
 
+def execute_safe_query_structured(sql: str) -> dict:
+    """Execute a read-only SQL query. Returns text (for LLM) and structured rows (for UI).
+
+    Returns:
+        {"text": "formatted table string", "columns": [...], "rows": [{...}, ...]}
+    """
+    sql_stripped = sql.strip()
+    sql_upper = sql_stripped.upper()
+
+    if not sql_upper.startswith("SELECT"):
+        return {"text": "Error: Only SELECT queries are allowed.", "columns": [], "rows": []}
+
+    for keyword in BLOCKED_KEYWORDS:
+        if re.search(rf"\b{keyword}\b", sql_upper):
+            return {"text": f"Error: {keyword} operations are not allowed.", "columns": [], "rows": []}
+
+    if ";" in sql_stripped[:-1]:
+        return {"text": "Error: Multiple statements are not allowed.", "columns": [], "rows": []}
+
+    try:
+        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+        conn.execute("PRAGMA query_only = ON")
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute(sql_stripped.rstrip(";"))
+        rows = cur.fetchmany(MAX_ROWS)
+
+        if not rows:
+            conn.close()
+            return {"text": "No results found.", "columns": [], "rows": []}
+
+        columns = list(rows[0].keys())
+
+        # Structured rows as list of dicts
+        structured_rows = [{col: row[col] for col in columns} for row in rows]
+
+        # Formatted text (same as execute_safe_query)
+        lines = []
+        lines.append(" | ".join(columns))
+        lines.append("-" * len(lines[0]))
+        for row in rows:
+            lines.append(" | ".join(str(row[col]) if row[col] is not None else "N/A" for col in columns))
+
+        total = cur.execute(f"SELECT COUNT(*) FROM ({sql_stripped.rstrip(';')})").fetchone()[0]
+        conn.close()
+
+        text = "\n".join(lines)
+        if total > MAX_ROWS:
+            text += f"\n\n(Showing {MAX_ROWS} of {total} total results)"
+
+        return {"text": text, "columns": columns, "rows": structured_rows}
+
+    except sqlite3.Error as e:
+        return {"text": f"Query error: {e}", "columns": [], "rows": []}
+    except Exception as e:
+        return {"text": f"Error: {e}", "columns": [], "rows": []}
+
+
 def get_schema_description() -> str:
     """Return a human-readable schema description for the LLM system prompt."""
     return """Database tables:
@@ -475,6 +546,119 @@ def get_schema_description() -> str:
 Common JOINs:
 - vehicles JOIN customers ON vehicles.customer_id = customers.id
 - service_records JOIN vehicles ON service_records.vehicle_id = vehicles.id"""
+
+
+# ---------------------------------------------------------------------------
+# Job card helpers
+# ---------------------------------------------------------------------------
+
+def build_job_card_data(
+    vehicle_id: int,
+    service_package_id: int | None = None,
+    part_ids: list[int] | None = None,
+    preferred_date: str = "",
+    notes: str = "",
+) -> dict:
+    """Query DB and assemble a structured job card payload for the frontend."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # Vehicle + customer info
+    cur.execute("""
+        SELECT v.id as vehicle_id, v.model, v.variant, v.fuel_type, v.year,
+               v.registration_no, v.current_mileage,
+               c.id as customer_id, c.name, c.phone
+        FROM vehicles v JOIN customers c ON v.customer_id = c.id
+        WHERE v.id = ?
+    """, (vehicle_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return {"error": f"Vehicle {vehicle_id} not found"}
+
+    card: dict = {
+        "customer": {
+            "name": row["name"],
+            "phone": row["phone"],
+            "customerId": row["customer_id"],
+        },
+        "vehicle": {
+            "model": row["model"],
+            "variant": row["variant"],
+            "registrationNo": row["registration_no"],
+            "mileage": row["current_mileage"],
+            "vehicleId": row["vehicle_id"],
+        },
+        "servicePackage": None,
+        "serviceItems": [],
+        "parts": [],
+        "totalEstimate": 0.0,
+        "preferredDate": preferred_date,
+        "notes": notes,
+    }
+
+    total = 0.0
+
+    # Service package
+    if service_package_id:
+        cur.execute("SELECT * FROM service_packages WHERE id = ?", (service_package_id,))
+        pkg = cur.fetchone()
+        if pkg:
+            includes = json.loads(pkg["includes"]) if pkg["includes"] else []
+            card["servicePackage"] = {
+                "id": pkg["id"],
+                "name": pkg["name"],
+                "price": pkg["price"],
+                "includes": includes,
+            }
+            total += pkg["price"]
+
+    # Parts
+    if part_ids:
+        for pid in part_ids:
+            cur.execute("SELECT * FROM parts WHERE id = ?", (pid,))
+            part = cur.fetchone()
+            if part:
+                card["parts"].append({
+                    "name": part["name"],
+                    "partNumber": part["part_number"],
+                    "quantity": 1,
+                    "unitPrice": part["price"],
+                    "totalPrice": part["price"],
+                })
+                total += part["price"]
+
+    card["totalEstimate"] = total
+    conn.close()
+    return card
+
+
+def save_job_card(data: dict) -> int:
+    """Save a confirmed job card to the database. Returns the job card ID."""
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO job_cards
+        (customer_id, vehicle_id, preferred_date, service_items, parts,
+         total_estimate, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        data["customer"]["customerId"],
+        data["vehicle"]["vehicleId"],
+        data.get("preferredDate", ""),
+        json.dumps(data.get("serviceItems", []) + (
+            [{"name": data["servicePackage"]["name"], "includes": data["servicePackage"]["includes"],
+              "cost": data["servicePackage"]["price"]}] if data.get("servicePackage") else []
+        )),
+        json.dumps(data.get("parts", [])),
+        data.get("totalEstimate", 0),
+        data.get("notes", ""),
+    ))
+    conn.commit()
+    job_id = cur.lastrowid
+    conn.close()
+    return job_id
 
 
 # ---------------------------------------------------------------------------
