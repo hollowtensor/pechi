@@ -35,9 +35,10 @@ VLLM_URL = "https://sl6b8qqermny8m-8000.proxy.runpod.net"
 WEBRTC_SAMPLE_RATE = 48000
 TARGET_SAMPLE_RATE = 16000
 
-VAD_ENERGY_THRESHOLD = 300
+VAD_ENERGY_THRESHOLD = 600
 VAD_SILENCE_DURATION = 0.8
-VAD_MIN_SPEECH_DURATION = 0.3
+VAD_MIN_SPEECH_DURATION = 0.8
+MIN_AUDIO_SECONDS = 0.5  # skip very short clips (keystrokes, clicks)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -213,6 +214,12 @@ class ASRBot:
             # Resample 48kHz → 16kHz
             audio_16k = resample_audio(audio, WEBRTC_SAMPLE_RATE, TARGET_SAMPLE_RATE)
             duration = len(audio_16k) / TARGET_SAMPLE_RATE
+
+            if duration < MIN_AUDIO_SECONDS:
+                log.info(f"Skipping short audio ({duration:.2f}s < {MIN_AUDIO_SECONDS}s)")
+                await self._send_data({"type": "status", "text": "Ready — start speaking"})
+                return
+
             log.info(f"Transcribing {duration:.2f}s of audio")
 
             await self._send_data({"type": "status", "text": "Transcribing..."})

@@ -7,6 +7,9 @@ LiveKit WebRTC frontend.
 
 ## Architecture
 
+> See [docs/architecture.md](docs/architecture.md) for detailed diagrams,
+> data flow sequences, audio pipeline, and network topology.
+
 ```
 Browser (localhost:5173)
     |
