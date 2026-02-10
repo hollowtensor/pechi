@@ -1,5 +1,5 @@
 """
-LLM Agent — Maruti Suzuki Service Assistant
+LLM Agent -- Maruti Suzuki Service Assistant
 Connects to LM Studio (Qwen3-4B) with tool calling, rolling summary memory,
 customer context caching, and Redis session persistence.
 """
@@ -11,22 +11,19 @@ from datetime import datetime
 import httpx
 import redis.asyncio as aioredis
 
-from database import execute_safe_query_structured, get_schema_description, build_job_card_data
+from .config import (
+    LM_STUDIO_URL,
+    LLM_MODEL,
+    MAX_TOOL_ROUNDS,
+    RECENT_MESSAGES_KEEP,
+    REDIS_URL,
+    SESSION_TTL,
+    SUMMARIZE_THRESHOLD,
+    TOOL_RESULT_MAX_CHARS,
+)
+from .database import execute_safe_query_structured, get_schema_description, build_job_card_data
 
 log = logging.getLogger("llm_agent")
-
-LM_STUDIO_URL = "http://localhost:1234/v1"
-MODEL = "qwen/qwen3-4b-2507"
-REDIS_URL = "redis://localhost:6379"
-SESSION_TTL = 3600  # 1 hour
-
-# Token budget (Qwen3-4B has 32K context)
-TOKEN_BUDGET = 24000  # leave 8K for response + tool overhead
-SUMMARIZE_THRESHOLD = 16000  # trigger summarization above this
-RECENT_MESSAGES_KEEP = 8  # always keep last N messages in full
-TOOL_RESULT_MAX_CHARS = 800  # truncate tool results in history
-
-MAX_TOOL_ROUNDS = 5
 
 TOOLS = [
     {
@@ -369,7 +366,7 @@ class LLMAgent:
             resp = await self.http.post(
                 "/chat/completions",
                 json={
-                    "model": MODEL,
+                    "model": LLM_MODEL,
                     "messages": [
                         {
                             "role": "system",
@@ -424,7 +421,7 @@ class LLMAgent:
                 resp = await self.http.post(
                     "/chat/completions",
                     json={
-                        "model": MODEL,
+                        "model": LLM_MODEL,
                         "messages": self._build_messages(),
                         "tools": TOOLS,
                         "tool_choice": "auto",
@@ -469,7 +466,7 @@ class LLMAgent:
                             if result["rows"] and self.send_data_callback:
                                 panel_msg = _classify_panel_data(result["columns"], result["rows"])
                                 if panel_msg:
-                                    log.info(f"Side panel: {panel_msg['panelType']} — {panel_msg['title']}")
+                                    log.info(f"Side panel: {panel_msg['panelType']} -- {panel_msg['title']}")
                                     await self.send_data_callback(panel_msg)
                         except (json.JSONDecodeError, KeyError) as e:
                             log.error(f"Tool call parse error: {e}")

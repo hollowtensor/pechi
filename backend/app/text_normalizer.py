@@ -6,7 +6,7 @@ phone numbers, and other patterns before passing to the LLM.
 
 import re
 
-# Word → digit mapping
+# Word -> digit mapping
 WORD_TO_DIGIT = {
     "zero": "0", "oh": "0", "o": "0",
     "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
@@ -18,7 +18,7 @@ WORD_TO_DIGIT = {
     "sixty": "60", "seventy": "70", "eighty": "80", "ninety": "90",
 }
 
-# "double five" → "55", "triple seven" → "777"
+# "double five" -> "55", "triple seven" -> "777"
 REPEAT_PREFIXES = {"double": 2, "triple": 3}
 
 
@@ -47,12 +47,12 @@ def normalize_spoken_numbers(text: str) -> str:
     """Convert spoken number words to digits in text.
 
     Handles:
-        "MH twelve A B one two three four" → "MH 12 A B 1234"
-        "nine eight seven six five four three two one zero" → "9876543210"
-        "double five" → "55"
-        "twenty three" → "23"
-        "0123 four" → "01234"  (mixed digit/word sequences)
-        "four." → "4"  (punctuation-attached number words)
+        "MH twelve A B one two three four" -> "MH 12 A B 1234"
+        "nine eight seven six five four three two one zero" -> "9876543210"
+        "double five" -> "55"
+        "twenty three" -> "23"
+        "0123 four" -> "01234"  (mixed digit/word sequences)
+        "four." -> "4"  (punctuation-attached number words)
     """
     words = text.split()
     result = []
@@ -71,7 +71,7 @@ def normalize_spoken_numbers(text: str) -> str:
                 i += 2
                 continue
 
-        # Handle tens + ones: "twenty three" → "23", "fifty six" → "56"
+        # Handle tens + ones: "twenty three" -> "23", "fifty six" -> "56"
         digit = WORD_TO_DIGIT.get(word_lower)
         if digit and int(digit) >= 20 and int(digit) % 10 == 0:
             if i + 1 < len(words):
@@ -85,8 +85,8 @@ def normalize_spoken_numbers(text: str) -> str:
             i += 1
             continue
 
-        # Handle single number words OR digit strings — collect consecutive and join
-        # This handles "one two three four" → "1234" AND "0123 four" → "01234"
+        # Handle single number words OR digit strings -- collect consecutive and join
+        # This handles "one two three four" -> "1234" AND "0123 four" -> "01234"
         is_number_word = digit is not None and len(digit) <= 2
         is_digit = clean_word.isdigit()
 
@@ -132,7 +132,7 @@ def normalize_spoken_numbers(text: str) -> str:
             i = j
             continue
 
-        # Not a number word — keep as-is
+        # Not a number word -- keep as-is
         result.append(words[i])
         i += 1
 
@@ -140,7 +140,7 @@ def normalize_spoken_numbers(text: str) -> str:
 
 
 def _collapse_spaced_letters(text: str) -> str:
-    """Collapse single spaced letters into groups: 'A B' → 'AB', 'M H' → 'MH'."""
+    """Collapse single spaced letters into groups: 'A B' -> 'AB', 'M H' -> 'MH'."""
     def _join_letters(m):
         return m.group(0).replace(" ", "")
     # Match sequences of single letters: "M H" or "A B C"
@@ -149,7 +149,7 @@ def _collapse_spaced_letters(text: str) -> str:
 
 
 def _merge_adjacent_digits(text: str) -> str:
-    """Merge adjacent digit groups separated by spaces: '0123 4' → '01234'."""
+    """Merge adjacent digit groups separated by spaces: '0123 4' -> '01234'."""
     return re.sub(r'(\d)\s+(\d)', r'\1\2', text)
 
 
@@ -158,10 +158,10 @@ def normalize_registration(text: str) -> str:
 
     Patterns like "MH 12 AB 1234" or "MH12AB1234" get normalized.
     """
-    # First collapse spaced letters: "M H" → "MH", "A B" → "AB"
+    # First collapse spaced letters: "M H" -> "MH", "A B" -> "AB"
     text = _collapse_spaced_letters(text)
 
-    # Merge adjacent digit groups so "0123 4" → "01234"
+    # Merge adjacent digit groups so "0123 4" -> "01234"
     # Only do this within potential registration contexts (near letters)
     # Use a targeted merge: digits near uppercase letter groups
     text = re.sub(
@@ -206,34 +206,3 @@ def normalize_asr_text(text: str) -> str:
     text = normalize_registration(text)
     text = normalize_phone(text)
     return text
-
-
-# ---------------------------------------------------------------------------
-# CLI test
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    tests = [
-        ("MH twelve A B one two three four", "MH-12-AB-1234"),
-        ("MH fourteen Y Z two three four five", "MH-14-YZ-2345"),
-        ("my number is nine eight seven six five four three two one zero", "phone: 9876543210"),
-        ("double five double three", "55 33"),
-        ("twenty three", "23"),
-        ("registration K A zero one A B one two three four", "KA-01-AB-1234"),
-        ("I have a Swift with number MH twelve CD five six seven eight", "MH-12-CD-5678"),
-        ("Hello I want to check my service history", "no change expected"),
-        # New edge cases
-        ("MH 12 AB 0123 four", "MH-12-AB-1234 (mixed digits + word)"),
-        ("MH 12 AB 0123 four.", "MH-12-AB-1234 (trailing period)"),
-        ("MH twelve AB zero one twenty three four.", "MH-12-AB-01234 → MH-12-AB-1234"),
-        ("MH12AB1234", "MH-12-AB-1234 (no spaces)"),
-        ("one two three four.", "1234 (trailing period on last word)"),
-        ("My registration is MH twelve AB one two three four.", "MH-12-AB-1234"),
-    ]
-
-    for input_text, description in tests:
-        result = normalize_asr_text(input_text)
-        print(f"  IN: {input_text}")
-        print(f" OUT: {result}")
-        print(f"NOTE: {description}")
-        print()

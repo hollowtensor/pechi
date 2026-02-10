@@ -10,9 +10,9 @@ import sqlite3
 from datetime import date, timedelta
 from pathlib import Path
 
-log = logging.getLogger("database")
+from .config import DB_PATH
 
-DB_PATH = Path(__file__).parent / "maruti_service.db"
+log = logging.getLogger("database")
 
 # These must appear as standalone SQL keywords (word boundaries), not inside column names
 BLOCKED_KEYWORDS = [
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS job_cards (
 """
 
 # ---------------------------------------------------------------------------
-# Date shifting — keeps seed data current relative to today
+# Date shifting -- keeps seed data current relative to today
 # ---------------------------------------------------------------------------
 
 # The newest completed service date in the static seed data below
@@ -378,6 +378,9 @@ def _shifted_service_records():
 
 def init_database() -> None:
     """Create tables and seed data if DB doesn't exist or is empty."""
+    # Ensure data directory exists
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
 
@@ -659,44 +662,3 @@ def save_job_card(data: dict) -> int:
     job_id = cur.lastrowid
     conn.close()
     return job_id
-
-
-# ---------------------------------------------------------------------------
-# CLI test
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    init_database()
-
-    print("\n--- Sample queries ---\n")
-
-    print("1. All customers with Swift:")
-    print(execute_safe_query("""
-        SELECT c.name, c.phone, v.model, v.variant, v.year, v.registration_no
-        FROM customers c JOIN vehicles v ON c.id = v.customer_id
-        WHERE v.model = 'Swift'
-    """))
-
-    print("\n2. Service history for vehicle MH-12-AB-1234:")
-    print(execute_safe_query("""
-        SELECT sr.service_date, sr.service_type, sr.description, sr.cost, sr.status
-        FROM service_records sr JOIN vehicles v ON sr.vehicle_id = v.id
-        WHERE v.registration_no = 'MH-12-AB-1234'
-        ORDER BY sr.service_date DESC
-    """))
-
-    print("\n3. Brake parts and prices:")
-    print(execute_safe_query("SELECT name, part_number, price, compatible_models FROM parts WHERE category = 'Brakes'"))
-
-    print("\n4. Upcoming scheduled services:")
-    print(execute_safe_query("""
-        SELECT v.registration_no, v.model, c.name, sr.service_date, sr.description
-        FROM service_records sr
-        JOIN vehicles v ON sr.vehicle_id = v.id
-        JOIN customers c ON v.customer_id = c.id
-        WHERE sr.status = 'scheduled'
-    """))
-
-    print("\n5. Destructive query test:")
-    print(execute_safe_query("DROP TABLE customers"))

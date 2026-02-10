@@ -1,7 +1,5 @@
 """
-Pechi — Maruti Suzuki Service Agent
-Receives audio via LiveKit WebRTC, transcribes via vLLM on RunPod,
-passes transcript to LLM (LM Studio) for agentic response with DB search.
+ASR Bot — LiveKit WebRTC audio receiver with VAD and vLLM transcription.
 """
 
 import asyncio
@@ -11,46 +9,36 @@ import json
 import logging
 import re
 import time
-import uuid
-from contextlib import asynccontextmanager
-from typing import Optional
 
 import httpx
 import numpy as np
 import soundfile as sf
-import uvicorn
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from livekit import api, rtc
-from pydantic import BaseModel
 from scipy.signal import resample_poly
 
-from database import init_database, save_job_card
-from llm_agent import LLMAgent
-from text_normalizer import normalize_asr_text
+from .config import (
+    ASR_LANGUAGES,
+    LIVEKIT_API_KEY,
+    LIVEKIT_API_SECRET,
+    LIVEKIT_URL,
+    MIN_AUDIO_SECONDS,
+    MIN_SPEECH_RMS,
+    TARGET_SAMPLE_RATE,
+    VAD_ENERGY_THRESHOLD,
+    VAD_MIN_SPEECH_DURATION,
+    VAD_SILENCE_DURATION,
+    VLLM_URL,
+    WEBRTC_SAMPLE_RATE,
+)
+from .database import save_job_card
+from .llm_agent import LLMAgent
+from .text_normalizer import normalize_asr_text
+
+log = logging.getLogger("asr_bot")
 
 # ---------------------------------------------------------------------------
-# Configuration
+# ASR helpers
 # ---------------------------------------------------------------------------
-
-LIVEKIT_URL = "ws://localhost:7880"
-LIVEKIT_API_KEY = "devkey"
-LIVEKIT_API_SECRET = "secret"
-VLLM_URL = "https://sl6b8qqermny8m-8000.proxy.runpod.net"
-
-WEBRTC_SAMPLE_RATE = 48000
-TARGET_SAMPLE_RATE = 16000
-
-VAD_ENERGY_THRESHOLD = 1000
-VAD_SILENCE_DURATION = 0.8
-VAD_MIN_SPEECH_DURATION = 0.8
-MIN_AUDIO_SECONDS = 0.5  # skip very short clips (keystrokes, clicks)
-MIN_SPEECH_RMS = 800  # minimum average RMS to send to ASR (skip pure noise)
-
-ASR_LANGUAGES = {
-    "en": "English",
-    "hi": "Hindi",
-}
 
 
 def build_asr_prompt(language: str) -> str:
@@ -60,6 +48,7 @@ def build_asr_prompt(language: str) -> str:
         "Use digits for all numbers (e.g. 1234 not one two three four). "
         "Format Indian vehicle registration numbers with hyphens (e.g. XX-00-YY-0000)."
     )
+
 
 # Pattern to parse Qwen3-ASR output: "language English<asr_text>..."
 ASR_OUTPUT_PATTERN = re.compile(r"language\s+\w+<asr_text>(.*)", re.DOTALL)
@@ -72,35 +61,11 @@ def parse_asr_output(content: str) -> str:
         return m.group(1).strip()
     return content.strip()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-log = logging.getLogger("asr_agent")
-
-# ---------------------------------------------------------------------------
-# Pydantic models
-# ---------------------------------------------------------------------------
-
-class LoginRequest(BaseModel):
-    userId: Optional[str] = "default_user"
-    language: Optional[str] = "en"
-
-class LoginResponse(BaseModel):
-    success: bool
-    userId: Optional[str] = None
-    sessionId: Optional[str] = None
-    token: Optional[str] = None
-    livekitUrl: str = "ws://localhost:7880"
-    message: str = ""
-
-class LogoutRequest(BaseModel):
-    userId: str
 
 # ---------------------------------------------------------------------------
 # Audio utilities
 # ---------------------------------------------------------------------------
+
 
 def resample_audio(audio: np.ndarray, from_sr: int, to_sr: int) -> np.ndarray:
     if from_sr == to_sr:
@@ -120,9 +85,11 @@ def audio_to_wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
 def compute_rms(audio: np.ndarray) -> float:
     return float(np.sqrt(np.mean(audio.astype(np.float64) ** 2)))
 
+
 # ---------------------------------------------------------------------------
-# ASR Bot with LLM Agent
+# ASR Bot
 # ---------------------------------------------------------------------------
+
 
 class ASRBot:
     def __init__(self, room_name: str, user_id: str, language: str = "en"):
@@ -284,7 +251,7 @@ class ASRBot:
     async def _transcribe(self, audio: np.ndarray):
         self.generating = True
         try:
-            # Resample 48kHz → 16kHz
+            # Resample 48kHz -> 16kHz
             audio_16k = resample_audio(audio, WEBRTC_SAMPLE_RATE, TARGET_SAMPLE_RATE)
             duration = len(audio_16k) / TARGET_SAMPLE_RATE
 
@@ -293,7 +260,7 @@ class ASRBot:
                 await self._send_data({"type": "status", "text": "Ready — start speaking"})
                 return
 
-            # Check average energy — skip if it's just background noise
+            # Check average energy -- skip if it's just background noise
             avg_rms = compute_rms(audio_16k)
             if avg_rms < MIN_SPEECH_RMS:
                 log.info(f"Skipping low-energy audio (RMS={avg_rms:.0f} < {MIN_SPEECH_RMS})")
@@ -303,7 +270,7 @@ class ASRBot:
             log.info(f"Transcribing {duration:.2f}s of audio (RMS={avg_rms:.0f})")
             await self._send_data({"type": "status", "text": "Transcribing..."})
 
-            # Encode as WAV bytes → base64 data URL
+            # Encode as WAV bytes -> base64 data URL
             wav_bytes = audio_to_wav_bytes(audio_16k, TARGET_SAMPLE_RATE)
             audio_b64 = base64.b64encode(wav_bytes).decode()
             audio_data_url = f"data:audio/wav;base64,{audio_b64}"
@@ -371,91 +338,3 @@ class ASRBot:
         await self.http.aclose()
         await self.llm.close()
         log.info("Bot stopped")
-
-# ---------------------------------------------------------------------------
-# FastAPI app
-# ---------------------------------------------------------------------------
-
-active_bots: dict[str, ASRBot] = {}
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    log.info("Pechi Service Agent starting...")
-    init_database()
-    yield
-    for bot in list(active_bots.values()):
-        await bot.stop()
-    log.info("Pechi Service Agent stopped")
-
-
-app = FastAPI(title="Pechi Service Agent", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy", "service": "pechi-agent", "vllm_url": VLLM_URL}
-
-
-@app.post("/api/login")
-async def login(req: LoginRequest):
-    user_id = str(uuid.uuid4())
-    room_name = f"asr-{user_id[:8]}"
-
-    # Generate user token
-    user_token = (
-        api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
-        .with_identity(user_id)
-        .with_name(f"user-{user_id[:8]}")
-        .with_grants(
-            api.VideoGrants(
-                room_join=True, room=room_name,
-                can_publish=True, can_subscribe=True,
-                can_publish_data=True,
-            )
-        )
-        .to_jwt()
-    )
-
-    # Create and start bot
-    lang = req.language or "en"
-    log.info(f"Language: {ASR_LANGUAGES.get(lang, lang)}")
-    bot = ASRBot(room_name, user_id, language=lang)
-    active_bots[user_id] = bot
-
-    try:
-        await bot.start()
-    except Exception as e:
-        log.error(f"Bot start failed: {e}", exc_info=True)
-        del active_bots[user_id]
-        return LoginResponse(success=False, message=f"Bot start failed: {e}")
-
-    log.info(f"Login: user={user_id}, room={room_name}")
-    return LoginResponse(
-        success=True,
-        userId=user_id,
-        sessionId=room_name,
-        token=user_token,
-        livekitUrl=LIVEKIT_URL,
-        message="Connected",
-    )
-
-
-@app.post("/api/logout")
-async def logout(req: LogoutRequest):
-    bot = active_bots.pop(req.userId, None)
-    if bot:
-        await bot.stop()
-        log.info(f"Logout: user={req.userId}")
-    return {"success": True}
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8021)

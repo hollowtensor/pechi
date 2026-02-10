@@ -1,0 +1,37 @@
+{
+  "name": "mobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "prebuild": "expo prebuild --clean",
+    "deploy": "./scripts/deploy-ios.sh",
+    "deploy:quick": "./scripts/deploy-ios.sh --skip-build"
+  },
+  "dependencies": {
+    "@gorhom/bottom-sheet": "^5.2.8",
+    "@livekit/react-native": "^2.9.6",
+    "@livekit/react-native-webrtc": "^137.0.2",
+    "@react-native-community/datetimepicker": "8.4.4",
+    "dotenv": "^17.2.4",
+    "expo": "~54.0.33",
+    "expo-build-properties": "~1.0.10",
+    "expo-constants": "~18.0.13",
+    "expo-status-bar": "~3.0.9",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-markdown-display": "^7.0.2",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "babel-preset-expo": "^54.0.10",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}
