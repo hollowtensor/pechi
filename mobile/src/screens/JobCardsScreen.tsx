@@ -25,6 +25,7 @@ export function JobCardsScreen() {
     refresh,
     loadDetail,
     advanceStatus,
+    toggleChecklist,
   } = useJobCards();
 
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -64,6 +65,13 @@ export function JobCardsScreen() {
       await advanceStatus(id, status);
     },
     [advanceStatus],
+  );
+
+  const handleToggleChecklist = useCallback(
+    async (id: number, key: string, checked: boolean) => {
+      await toggleChecklist(id, key, checked);
+    },
+    [toggleChecklist],
   );
 
   const handleCloseDetail = useCallback(() => {
@@ -107,6 +115,7 @@ export function JobCardsScreen() {
           card={selectedCard}
           isAdvisor={isAdvisor}
           onAdvanceStatus={handleAdvanceStatus}
+          onToggleChecklist={handleToggleChecklist}
           onClose={handleCloseDetail}
         />
       )}

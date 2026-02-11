@@ -48,7 +48,7 @@ export function resolveUrl(url: string): string {
 // Job card execution API
 // ---------------------------------------------------------------------------
 
-import type { JobCardListItem, JobCardStatus } from '../types';
+import type { JobCardListItem, JobCardStatus, ChecklistItem } from '../types';
 
 export async function fetchJobCards(
   status?: string,
@@ -86,6 +86,19 @@ export async function updateJobCardFields(
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(fields),
+  });
+  return resp.json();
+}
+
+export async function toggleChecklistItem(
+  jobId: number,
+  key: string,
+  checked: boolean,
+): Promise<{ success: boolean; checklist: ChecklistItem[] }> {
+  const resp = await fetch(`${API_BASE}/api/job-cards/${jobId}/checklist`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, checked }),
   });
   return resp.json();
 }

@@ -13,16 +13,18 @@ import { JOB_CARD_STATUS_ORDER, JOB_CARD_STATUS_LABELS } from '../../types';
 import type { JobCardListItem, JobCardStatus } from '../../types';
 import { StatusStepper } from './StatusStepper';
 import { StatusTimeline } from './StatusTimeline';
+import { ServiceChecklist } from './ServiceChecklist';
 import { spacing, borderRadius } from '../../constants/theme';
 
 interface Props {
   card: JobCardListItem;
   isAdvisor: boolean;
   onAdvanceStatus: (id: number, status: JobCardStatus) => void;
+  onToggleChecklist: (id: number, key: string, checked: boolean) => void;
   onClose: () => void;
 }
 
-export function JobCardDetailModal({ card, isAdvisor, onAdvanceStatus, onClose }: Props) {
+export function JobCardDetailModal({ card, isAdvisor, onAdvanceStatus, onToggleChecklist, onClose }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -34,9 +36,14 @@ export function JobCardDetailModal({ card, isAdvisor, onAdvanceStatus, onClose }
     return null;
   }, [card.status]);
 
+  const checklistComplete = useMemo(() => {
+    if (!card.checklist || card.checklist.length === 0) return true;
+    return card.checklist.every((item) => item.checked);
+  }, [card.checklist]);
+
   const handleAdvance = useCallback(() => {
-    if (nextStatus) onAdvanceStatus(card.id, nextStatus);
-  }, [card.id, nextStatus, onAdvanceStatus]);
+    if (nextStatus && checklistComplete) onAdvanceStatus(card.id, nextStatus);
+  }, [card.id, nextStatus, onAdvanceStatus, checklistComplete]);
 
   const costDisplay = card.actual_cost ?? card.total_estimate;
 
@@ -114,6 +121,15 @@ export function JobCardDetailModal({ card, isAdvisor, onAdvanceStatus, onClose }
             </View>
           )}
 
+          {/* Service Checklist */}
+          {card.checklist && card.checklist.length > 0 && (
+            <ServiceChecklist
+              checklist={card.checklist}
+              isAdvisor={isAdvisor}
+              onToggle={(key, checked) => onToggleChecklist(card.id, key, checked)}
+            />
+          )}
+
           {/* Cost Summary */}
           <View style={[styles.section, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Cost</Text>
@@ -152,15 +168,26 @@ export function JobCardDetailModal({ card, isAdvisor, onAdvanceStatus, onClose }
 
           {/* Advance Button (Advisor only) */}
           {isAdvisor && nextStatus && (
-            <TouchableOpacity
-              style={[styles.advanceBtn, { backgroundColor: colors.accent }]}
-              onPress={handleAdvance}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.advanceBtnText}>
-                Advance to {JOB_CARD_STATUS_LABELS[nextStatus]}
-              </Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.advanceBtn,
+                  { backgroundColor: checklistComplete ? colors.accent : colors.textMuted },
+                ]}
+                onPress={handleAdvance}
+                activeOpacity={0.8}
+                disabled={!checklistComplete}
+              >
+                <Text style={styles.advanceBtnText}>
+                  Advance to {JOB_CARD_STATUS_LABELS[nextStatus]}
+                </Text>
+              </TouchableOpacity>
+              {!checklistComplete && (
+                <Text style={[styles.checklistHint, { color: colors.textMuted }]}>
+                  Complete all checklist items to advance
+                </Text>
+              )}
+            </>
           )}
 
           <View style={{ height: insets.bottom + 20 }} />
@@ -291,5 +318,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  checklistHint: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
   },
 });

@@ -103,7 +103,8 @@ CREATE TABLE IF NOT EXISTS job_cards (
     actual_cost REAL,
     started_at TEXT,
     completed_at TEXT,
-    status_history TEXT
+    status_history TEXT,
+    checklist TEXT
 );
 """
 
@@ -398,6 +399,7 @@ def init_database() -> None:
         ("started_at", "TEXT"),
         ("completed_at", "TEXT"),
         ("status_history", "TEXT"),
+        ("checklist", "TEXT"),
     ]:
         try:
             cur.execute(f"ALTER TABLE job_cards ADD COLUMN {col_name} {col_type}")
@@ -447,6 +449,14 @@ def _seed_job_cards(cur: sqlite3.Cursor) -> None:
                 {"status": "diagnosis", "timestamp": (now - timedelta(hours=6)).isoformat(), "notes": "Brake pads worn, confirmed replacement needed"},
                 {"status": "in_progress", "timestamp": (now - timedelta(hours=4)).isoformat(), "notes": "Service started"},
             ]),
+            "checklist": json.dumps([
+                {"key": "svc_0_Engine Oil Change", "label": "Engine Oil Change", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=3)).isoformat()},
+                {"key": "svc_0_Oil Filter", "label": "Oil Filter", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=3)).isoformat()},
+                {"key": "svc_0_Air Filter", "label": "Air Filter", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=2)).isoformat()},
+                {"key": "svc_0_Brake Inspection", "label": "Brake Inspection", "category": "service", "checked": False, "checked_at": None},
+                {"key": "svc_0_AC Check", "label": "AC Check", "category": "service", "checked": False, "checked_at": None},
+                {"key": "part_0_Front Brake Pads (Set)", "label": "Install Front Brake Pads (Set)", "category": "part", "checked": False, "checked_at": None},
+            ]),
         },
         {
             "customer_id": 2, "vehicle_id": 3,
@@ -458,6 +468,12 @@ def _seed_job_cards(cur: sqlite3.Cursor) -> None:
             "notes": "",
             "status_history": json.dumps([
                 {"status": "confirmed", "timestamp": (now - timedelta(hours=3)).isoformat(), "notes": "Job card created via voice assistant"},
+            ]),
+            "checklist": json.dumps([
+                {"key": "svc_0_Engine Oil Change", "label": "Engine Oil Change", "category": "service", "checked": False, "checked_at": None},
+                {"key": "svc_0_Oil Filter", "label": "Oil Filter", "category": "service", "checked": False, "checked_at": None},
+                {"key": "svc_0_Multi-point Inspection", "label": "Multi-point Inspection", "category": "service", "checked": False, "checked_at": None},
+                {"key": "svc_0_Top-up Fluids", "label": "Top-up Fluids", "category": "service", "checked": False, "checked_at": None},
             ]),
         },
         {
@@ -481,6 +497,13 @@ def _seed_job_cards(cur: sqlite3.Cursor) -> None:
                 {"status": "ready_for_delivery", "timestamp": (now - timedelta(days=3, hours=2)).isoformat(), "notes": "Vehicle washed and ready"},
                 {"status": "completed", "timestamp": (now - timedelta(days=3)).isoformat(), "notes": "Customer picked up vehicle"},
             ]),
+            "checklist": json.dumps([
+                {"key": "svc_0_AC Gas Top-up", "label": "AC Gas Top-up", "category": "service", "checked": True, "checked_at": (now - timedelta(days=4, hours=-2)).isoformat()},
+                {"key": "svc_0_AC Filter Cleaning", "label": "AC Filter Cleaning", "category": "service", "checked": True, "checked_at": (now - timedelta(days=4, hours=-3)).isoformat()},
+                {"key": "svc_0_Evaporator Cleaning", "label": "Evaporator Cleaning", "category": "service", "checked": True, "checked_at": (now - timedelta(days=4, hours=-4)).isoformat()},
+                {"key": "svc_0_Cabin Sanitization", "label": "Cabin Sanitization", "category": "service", "checked": True, "checked_at": (now - timedelta(days=3, hours=5)).isoformat()},
+                {"key": "part_0_Cabin Filter", "label": "Install Cabin Filter", "category": "part", "checked": True, "checked_at": (now - timedelta(days=4, hours=-3)).isoformat()},
+            ]),
         },
         {
             "customer_id": 5, "vehicle_id": 6,
@@ -498,6 +521,17 @@ def _seed_job_cards(cur: sqlite3.Cursor) -> None:
                 {"status": "diagnosis", "timestamp": (now - timedelta(hours=9)).isoformat(), "notes": "Air filter needs replacement"},
                 {"status": "in_progress", "timestamp": (now - timedelta(hours=8)).isoformat(), "notes": ""},
                 {"status": "quality_check", "timestamp": (now - timedelta(hours=1)).isoformat(), "notes": "All checks passing"},
+            ]),
+            "checklist": json.dumps([
+                {"key": "svc_0_Engine Oil Change", "label": "Engine Oil Change", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=7)).isoformat()},
+                {"key": "svc_0_Oil Filter", "label": "Oil Filter", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=7)).isoformat()},
+                {"key": "svc_0_Air Filter", "label": "Air Filter", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=6)).isoformat()},
+                {"key": "svc_0_Cabin Filter", "label": "Cabin Filter", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=6)).isoformat()},
+                {"key": "svc_0_Brake Inspection", "label": "Brake Inspection", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=5)).isoformat()},
+                {"key": "svc_0_Suspension Check", "label": "Suspension Check", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=4)).isoformat()},
+                {"key": "svc_0_AC Service", "label": "AC Service", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=3)).isoformat()},
+                {"key": "svc_0_Full Diagnostics", "label": "Full Diagnostics", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=2)).isoformat()},
+                {"key": "part_0_Air Filter", "label": "Install Air Filter", "category": "part", "checked": True, "checked_at": (now - timedelta(hours=6)).isoformat()},
             ]),
         },
     ]
@@ -741,6 +775,29 @@ def build_job_card_data(
     return card
 
 
+def generate_checklist(service_items: list, parts: list) -> list[dict]:
+    """Build a checklist from service item includes and parts."""
+    items = []
+    for i, svc in enumerate(service_items):
+        for task in svc.get("includes", []):
+            items.append({
+                "key": f"svc_{i}_{task}",
+                "label": task,
+                "category": "service",
+                "checked": False,
+                "checked_at": None,
+            })
+    for i, part in enumerate(parts):
+        items.append({
+            "key": f"part_{i}_{part['name']}",
+            "label": f"Install {part['name']}",
+            "category": "part",
+            "checked": False,
+            "checked_at": None,
+        })
+    return items
+
+
 def save_job_card(data: dict) -> int:
     """Save a confirmed job card to the database. Returns the job card ID."""
     conn = sqlite3.connect(str(DB_PATH))
@@ -750,23 +807,27 @@ def save_job_card(data: dict) -> int:
         "timestamp": datetime.now().isoformat(),
         "notes": "Job card created via voice assistant",
     }])
+    service_items_list = data.get("serviceItems", []) + (
+        [{"name": data["servicePackage"]["name"], "includes": data["servicePackage"]["includes"],
+          "cost": data["servicePackage"]["price"]}] if data.get("servicePackage") else []
+    )
+    parts_list = data.get("parts", [])
+    checklist = generate_checklist(service_items_list, parts_list)
     cur.execute("""
         INSERT INTO job_cards
         (customer_id, vehicle_id, preferred_date, service_items, parts,
-         total_estimate, notes, status_history)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         total_estimate, notes, status_history, checklist)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data["customer"]["customerId"],
         data["vehicle"]["vehicleId"],
         data.get("preferredDate", ""),
-        json.dumps(data.get("serviceItems", []) + (
-            [{"name": data["servicePackage"]["name"], "includes": data["servicePackage"]["includes"],
-              "cost": data["servicePackage"]["price"]}] if data.get("servicePackage") else []
-        )),
-        json.dumps(data.get("parts", [])),
+        json.dumps(service_items_list),
+        json.dumps(parts_list),
         data.get("totalEstimate", 0),
         data.get("notes", ""),
         initial_history,
+        json.dumps(checklist),
     ))
     conn.commit()
     job_id = cur.lastrowid
@@ -812,6 +873,7 @@ def get_job_cards(status_filter: str | None = None) -> list[dict]:
         card["service_items"] = json.loads(card["service_items"]) if card["service_items"] else []
         card["parts"] = json.loads(card["parts"]) if card["parts"] else []
         card["status_history"] = json.loads(card["status_history"]) if card.get("status_history") else []
+        card["checklist"] = json.loads(card["checklist"]) if card.get("checklist") else []
         result.append(card)
     conn.close()
     return result
@@ -844,6 +906,7 @@ def get_job_card_by_id(job_id: int) -> dict | None:
     card["service_items"] = json.loads(card["service_items"]) if card["service_items"] else []
     card["parts"] = json.loads(card["parts"]) if card["parts"] else []
     card["status_history"] = json.loads(card["status_history"]) if card.get("status_history") else []
+    card["checklist"] = json.loads(card["checklist"]) if card.get("checklist") else []
     return card
 
 
@@ -856,7 +919,7 @@ def advance_job_card_status(job_id: int, new_status: str, notes: str = "") -> di
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    cur.execute("SELECT status, status_history FROM job_cards WHERE id = ?", (job_id,))
+    cur.execute("SELECT status, status_history, checklist FROM job_cards WHERE id = ?", (job_id,))
     row = cur.fetchone()
     if not row:
         conn.close()
@@ -869,6 +932,12 @@ def advance_job_card_status(job_id: int, new_status: str, notes: str = "") -> di
     if new_idx <= current_idx:
         conn.close()
         return {"success": False, "message": f"Cannot move from '{current_status}' to '{new_status}'"}
+
+    # Block advancement if checklist has unchecked items
+    checklist = json.loads(row["checklist"]) if row["checklist"] else []
+    if checklist and not all(item.get("checked") for item in checklist):
+        conn.close()
+        return {"success": False, "message": "Complete all checklist items before advancing status"}
 
     history = json.loads(row["status_history"]) if row["status_history"] else []
     history.append({
@@ -908,3 +977,34 @@ def update_job_card_fields(job_id: int, fields: dict) -> dict:
     conn.commit()
     conn.close()
     return {"success": True}
+
+
+def update_checklist_item(job_id: int, item_key: str, checked: bool) -> dict:
+    """Toggle a checklist item on a job card."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    cur.execute("SELECT checklist FROM job_cards WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return {"success": False, "message": "Job card not found"}
+
+    checklist = json.loads(row["checklist"]) if row["checklist"] else []
+    found = False
+    for item in checklist:
+        if item["key"] == item_key:
+            item["checked"] = checked
+            item["checked_at"] = datetime.now().isoformat() if checked else None
+            found = True
+            break
+
+    if not found:
+        conn.close()
+        return {"success": False, "message": f"Checklist item not found: {item_key}"}
+
+    cur.execute("UPDATE job_cards SET checklist = ? WHERE id = ?", (json.dumps(checklist), job_id))
+    conn.commit()
+    conn.close()
+    return {"success": True, "checklist": checklist}

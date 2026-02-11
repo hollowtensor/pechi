@@ -160,6 +160,14 @@ export interface StatusHistoryEntry {
   notes: string;
 }
 
+export interface ChecklistItem {
+  key: string;
+  label: string;
+  category: 'service' | 'part';
+  checked: boolean;
+  checked_at: string | null;
+}
+
 export interface JobCardListItem {
   id: number;
   customer_name: string;
@@ -187,6 +195,7 @@ export interface JobCardListItem {
     totalPrice: number;
   }>;
   status_history: StatusHistoryEntry[];
+  checklist: ChecklistItem[];
   created_at: string;
   started_at: string | null;
   completed_at: string | null;

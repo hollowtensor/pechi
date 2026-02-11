@@ -4,6 +4,7 @@ import {
   fetchJobCards,
   fetchJobCardDetail,
   updateJobCardStatus,
+  toggleChecklistItem,
 } from '../services/api';
 
 export function useJobCards() {
@@ -40,6 +41,28 @@ export function useJobCards() {
     [loadDetail, refresh],
   );
 
+  const toggleChecklist = useCallback(
+    async (id: number, key: string, checked: boolean) => {
+      // Optimistic update
+      setSelectedCard((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          checklist: prev.checklist.map((item) =>
+            item.key === key
+              ? { ...item, checked, checked_at: checked ? new Date().toISOString() : null }
+              : item,
+          ),
+        };
+      });
+      const res = await toggleChecklistItem(id, key, checked);
+      if (res.success && res.checklist) {
+        setSelectedCard((prev) => (prev ? { ...prev, checklist: res.checklist } : prev));
+      }
+    },
+    [],
+  );
+
   return {
     jobCards,
     loading,
@@ -50,5 +73,6 @@ export function useJobCards() {
     refresh,
     loadDetail,
     advanceStatus,
+    toggleChecklist,
   };
 }

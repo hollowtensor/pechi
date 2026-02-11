@@ -28,6 +28,7 @@ from .database import (
     get_job_card_by_id,
     advance_job_card_status,
     update_job_card_fields,
+    update_checklist_item,
     JOB_CARD_STATUSES,
 )
 
@@ -70,6 +71,11 @@ class JobCardUpdateRequest(BaseModel):
     assigned_technician: Optional[str] = None
     actual_cost: Optional[float] = None
     notes: Optional[str] = None
+
+
+class ChecklistToggleRequest(BaseModel):
+    key: str
+    checked: bool
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +199,12 @@ async def update_job_card(job_id: int, req: JobCardUpdateRequest):
     if not fields:
         return {"success": False, "message": "No fields to update"}
     return update_job_card_fields(job_id, fields)
+
+
+@app.patch("/api/job-cards/{job_id}/checklist")
+async def toggle_checklist(job_id: int, req: ChecklistToggleRequest):
+    """Toggle a checklist item on a job card."""
+    return update_checklist_item(job_id, req.key, req.checked)
 
 
 if __name__ == "__main__":
