@@ -50,7 +50,7 @@ Verify the device is connected:
 xcrun devicectl list devices
 ```
 
-You should see your device with state `available (paired)`. Note down the **Identifier** (e.g. `00008110-000E452A3AF2201E`).
+> **Note on device IDs:** `devicectl` shows a CoreDevice UUID (e.g. `94721C5B-AE34-58A6-B8D5-223E969AE41A`), while `xcodebuild` uses a different classic UDID (e.g. `00008110-000E452A3AF2201E`). The deploy script handles this automatically. If building manually, use the xcodebuild UDID (see step 7).
 
 ## 5. Configure Code Signing in Xcode
 
@@ -81,30 +81,48 @@ Check what's installed:
 xcodebuild -showsdks
 ```
 
-## 7. Build
+## 7. Build and Deploy (Automated)
 
-Replace `<DEVICE_ID>` with your device identifier from step 4:
+The deploy script handles building, installing, and launching in one step:
 
+```bash
+./scripts/deploy-ios.sh
+```
+
+It auto-detects your device using both `xcodebuild` (for building) and `devicectl` (for installing/launching), since they use different device ID formats.
+
+Options:
+```bash
+./scripts/deploy-ios.sh --skip-build    # Only install and launch (no rebuild)
+./scripts/deploy-ios.sh --device <ID>   # Override devicectl ID for install/launch
+```
+
+### Manual Build (if needed)
+
+To find your xcodebuild device ID:
+```bash
+xcodebuild -workspace ios/Pechi.xcworkspace -scheme Pechi -showdestinations 2>/dev/null \
+  | grep "platform:iOS, arch:"
+```
+
+Then build with that ID:
 ```bash
 xcodebuild \
   -workspace ios/Pechi.xcworkspace \
   -scheme Pechi \
-  -destination 'id=<DEVICE_ID>' \
+  -destination 'platform=iOS,id=<XCODE_DEVICE_ID>' \
   -allowProvisioningUpdates \
   build
 ```
 
-Wait for `** BUILD SUCCEEDED **`.
-
-## 8. Install on Device
-
+Install using the devicectl UUID:
 ```bash
 xcrun devicectl device install app \
-  --device <DEVICE_ID> \
+  --device <DEVICECTL_UUID> \
   ~/Library/Developer/Xcode/DerivedData/Pechi-*/Build/Products/Debug-iphoneos/Pechi.app
 ```
 
-## 9. Trust Developer Profile on iPhone
+## 8. Trust Developer Profile on iPhone
 
 On first install, iOS blocks untrusted developer apps:
 
@@ -114,7 +132,7 @@ On first install, iOS blocks untrusted developer apps:
 
 This is a one-time step per developer certificate.
 
-## 10. Start Metro Bundler
+## 9. Start Metro Bundler
 
 ```bash
 npx expo start --dev-client
@@ -122,13 +140,13 @@ npx expo start --dev-client
 
 Metro serves the JavaScript bundle to the app at `http://<LAN_IP>:8081`.
 
-## 11. Launch the App
+## 10. Launch the App
 
 Either:
 - Tap the **Pechi** app icon on your iPhone, or
 - From terminal:
   ```bash
-  xcrun devicectl device process launch --device <DEVICE_ID> com.pechi.mobile
+  xcrun devicectl device process launch --device <DEVICECTL_UUID> com.pechi.mobile
   ```
 
 The app connects to Metro, loads the JS bundle, and you should see the Pechi UI.
@@ -152,11 +170,25 @@ Trust the developer profile: iPhone Settings > General > VPN & Device Management
 ### `iOS X.X is not installed`
 Install the matching iOS platform in Xcode > Settings > Platforms.
 
+### `No Script URL provided` / App not connecting to Metro
+This happens when the app was built on a different network. Rebuild and reinstall:
+```bash
+./scripts/deploy-ios.sh
+```
+Then start Metro (`npx expo start --dev-client`) and reopen the app. If still stuck, shake the phone to open the dev menu and manually enter the Metro URL: `http://<LAN_IP>:8081`.
+
 ### App shows blank screen or can't connect to Metro
 - Ensure Metro is running (`npx expo start --dev-client`)
 - Ensure phone and computer are on the **same Wi-Fi network**
 - Check that `.env` has the correct LAN IP
 - Try shaking the phone to open the dev menu and enter the Metro URL manually: `http://<LAN_IP>:8081`
+
+### `Unable to find a device matching the provided destination specifier`
+`xcodebuild` and `devicectl` use different device IDs. Don't use the `devicectl` UUID with `xcodebuild`. Find the correct xcodebuild ID:
+```bash
+xcodebuild -workspace ios/Pechi.xcworkspace -scheme Pechi -showdestinations 2>/dev/null \
+  | grep "platform:iOS, arch:"
+```
 
 ### Port 8081 already in use
 ```bash
@@ -169,17 +201,14 @@ npx expo start --dev-client
 Once everything is configured, subsequent runs only need:
 
 ```bash
-# Terminal 1: Start Metro
+# One command: build + install + launch
+./scripts/deploy-ios.sh
+
+# Then in another terminal:
 npx expo start --dev-client
 
-# Terminal 2: Build + install (only if code changed in native layer)
-xcodebuild -workspace ios/Pechi.xcworkspace -scheme Pechi \
-  -destination 'id=<DEVICE_ID>' -allowProvisioningUpdates build
-xcrun devicectl device install app --device <DEVICE_ID> \
-  ~/Library/Developer/Xcode/DerivedData/Pechi-*/Build/Products/Debug-iphoneos/Pechi.app
-
-# Launch
-xcrun devicectl device process launch --device <DEVICE_ID> com.pechi.mobile
+# Or skip rebuild for install-only:
+./scripts/deploy-ios.sh --skip-build
 ```
 
 For JS-only changes, just save the file — Metro hot-reloads automatically.

@@ -33,25 +33,48 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Auto-detect device ──
-if [ -z "$DEVICE_ID" ]; then
-  echo "🔍 Detecting connected iOS device..."
-  DEVICE_ID=$(xcrun devicectl list devices 2>/dev/null \
-    | tail -n +3 \
-    | grep -v "^$" \
-    | head -1 \
-    | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9A-F]{8}-/) print $i}')
+# xcodebuild and devicectl use different IDs:
+#   xcodebuild: classic UDID (e.g. 00008110-000E452A3AF2201E)
+#   devicectl:  CoreDevice UUID (e.g. 94721C5B-AE34-58A6-B8D5-223E969AE41A)
+# We detect both and use each where appropriate.
 
-  if [ -z "$DEVICE_ID" ]; then
-    echo "❌ No connected iOS device found."
-    echo "   Connect your iPhone via USB, unlock it, and trust this computer."
-    exit 1
-  fi
+echo "🔍 Detecting connected iOS device..."
+
+# Get xcodebuild UDID (used for building)
+XCODE_DEVICE_LINE=$(xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -showdestinations 2>/dev/null \
+  | grep "platform:iOS, arch:" \
+  | grep -v "Simulator\|Mac\|placeholder" \
+  | head -1)
+
+XCODE_DEVICE_ID=$(echo "$XCODE_DEVICE_LINE" | sed 's/.*id:\([^,]*\).*/\1/')
+XCODE_DEVICE_NAME=$(echo "$XCODE_DEVICE_LINE" | sed 's/.*name:\([^}]*\).*/\1/' | xargs)
+
+if [ -z "$XCODE_DEVICE_ID" ] || [ "$XCODE_DEVICE_ID" = "$XCODE_DEVICE_LINE" ]; then
+  echo "❌ No connected iOS device found by xcodebuild."
+  echo "   Connect your iPhone via USB, unlock it, and trust this computer."
+  exit 1
 fi
 
-DEVICE_NAME=$(xcrun devicectl list devices 2>/dev/null \
-  | grep "$DEVICE_ID" \
-  | awk '{print $1}')
-echo "📱 Device: ${DEVICE_NAME:-unknown} ($DEVICE_ID)"
+# Get devicectl UUID (used for install/launch)
+DEVICECTL_ID=$(xcrun devicectl list devices 2>/dev/null \
+  | tail -n +3 \
+  | grep -v "^$" \
+  | grep -v "^-" \
+  | head -1 \
+  | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-/) print $i}')
+
+if [ -z "$DEVICECTL_ID" ]; then
+  echo "❌ No connected iOS device found by devicectl."
+  echo "   Connect your iPhone via USB, unlock it, and trust this computer."
+  exit 1
+fi
+
+# Allow --device to override the devicectl ID
+if [ -n "$DEVICE_ID" ]; then
+  DEVICECTL_ID="$DEVICE_ID"
+fi
+
+echo "📱 Device: ${XCODE_DEVICE_NAME} (build: $XCODE_DEVICE_ID, install: $DEVICECTL_ID)"
 
 # ── Prebuild if ios/ doesn't exist ──
 if [ ! -d "$PROJECT_DIR/ios" ]; then
@@ -65,7 +88,7 @@ if [ "$SKIP_BUILD" = false ]; then
   xcodebuild \
     -workspace "$WORKSPACE" \
     -scheme "$SCHEME" \
-    -destination "id=$DEVICE_ID" \
+    -destination "platform=iOS,id=$XCODE_DEVICE_ID" \
     -allowProvisioningUpdates \
     build \
     2>&1 | grep -E '(BUILD|error:|\*\*)' | tail -5
@@ -97,14 +120,14 @@ echo "📁 App: $APP_PATH"
 # ── Install ──
 echo "📲 Installing on device..."
 xcrun devicectl device install app \
-  --device "$DEVICE_ID" \
+  --device "$DEVICECTL_ID" \
   "$APP_PATH" 2>&1 | tail -3
 echo "✅ Installed"
 
 # ── Launch ──
 echo "🚀 Launching $BUNDLE_ID..."
 xcrun devicectl device process launch \
-  --device "$DEVICE_ID" \
+  --device "$DEVICECTL_ID" \
   "$BUNDLE_ID" 2>&1 | tail -2
 echo "✅ App launched"
 

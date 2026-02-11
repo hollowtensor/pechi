@@ -6,11 +6,16 @@ All settings in one place. Override via environment variables.
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env from backend/ directory
+load_dotenv(BACKEND_DIR / ".env")
 DATA_DIR = BACKEND_DIR / "data"
 DB_PATH = DATA_DIR / "maruti_service.db"
 
