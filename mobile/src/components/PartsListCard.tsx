@@ -1,37 +1,48 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import type { PartsListData } from '../types';
-import { colors, spacing, borderRadius } from '../constants/theme';
+import { spacing, borderRadius } from '../constants/theme';
 
 interface Props {
   data: PartsListData;
 }
 
 export function PartsListCard({ data }: Props) {
+  const { colors } = useTheme();
   return (
     <View>
       {data.parts.map((p, i) => (
-        <View key={i} style={styles.item}>
+        <View
+          key={i}
+          style={[styles.item, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}
+        >
           <View style={styles.row}>
             <View style={styles.info}>
-              <Text style={styles.name}>{p.name}</Text>
-              <Text style={styles.sub}>
+              <Text style={[styles.name, { color: colors.text }]}>{p.name}</Text>
+              <Text style={[styles.sub, { color: colors.textMuted }]}>
                 {p.partNumber}
                 {p.category ? ` \u00B7 ${p.category}` : ''}
               </Text>
             </View>
             <View style={styles.right}>
-              <Text style={styles.price}>{`\u20B9${p.price.toLocaleString()}`}</Text>
+              <Text style={[styles.price, { color: colors.text }]}>
+                {`\u20B9${p.price.toLocaleString()}`}
+              </Text>
               <View
                 style={[
                   styles.stockBadge,
-                  p.inStock ? styles.stockYes : styles.stockNo,
+                  {
+                    backgroundColor: p.inStock
+                      ? 'rgba(76, 175, 80, 0.15)'
+                      : 'rgba(244, 67, 54, 0.15)',
+                  },
                 ]}
               >
                 <Text
                   style={[
                     styles.stockText,
-                    p.inStock ? styles.stockTextYes : styles.stockTextNo,
+                    { color: p.inStock ? colors.stockGreen : colors.stockRed },
                   ]}
                 >
                   {p.inStock ? 'In Stock' : 'Out'}
@@ -40,7 +51,9 @@ export function PartsListCard({ data }: Props) {
             </View>
           </View>
           {p.compatibleModels ? (
-            <Text style={styles.compat}>{p.compatibleModels}</Text>
+            <Text style={[styles.compat, { color: colors.textMuted }]}>
+              {p.compatibleModels}
+            </Text>
           ) : null}
         </View>
       ))}
@@ -50,9 +63,7 @@ export function PartsListCard({ data }: Props) {
 
 const styles = StyleSheet.create({
   item: {
-    backgroundColor: 'rgba(240, 235, 227, 0.02)',
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.05)',
     borderRadius: borderRadius.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
@@ -67,12 +78,10 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
   },
   name: {
-    color: colors.text,
     fontSize: 14,
     fontWeight: '500',
   },
   sub: {
-    color: colors.textMuted,
     fontSize: 11,
     marginTop: 2,
   },
@@ -81,7 +90,6 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   price: {
-    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -90,24 +98,11 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: borderRadius.full,
   },
-  stockYes: {
-    backgroundColor: 'rgba(76, 175, 80, 0.15)',
-  },
-  stockNo: {
-    backgroundColor: 'rgba(244, 67, 54, 0.15)',
-  },
   stockText: {
     fontSize: 10,
     fontWeight: '600',
   },
-  stockTextYes: {
-    color: colors.stockGreen,
-  },
-  stockTextNo: {
-    color: colors.stockRed,
-  },
   compat: {
-    color: colors.textMuted,
     fontSize: 11,
     marginTop: spacing.sm,
   },

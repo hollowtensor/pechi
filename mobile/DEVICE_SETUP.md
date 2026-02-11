@@ -38,6 +38,8 @@ npx expo prebuild --clean
 
 This generates the `ios/` and `android/` directories with native code.
 
+> **When to re-run prebuild:** You must run `npx expo prebuild --clean` again whenever you add or remove a package that includes **native code** (e.g. `expo-av`, `@react-native-async-storage/async-storage`). The deploy script only runs prebuild if `ios/` is missing — it won't detect new native modules. Without re-running prebuild, you'll get errors like `NativeModule: AsyncStorage is null` or `Cannot find native module 'ExponentAV'` at runtime even though `xcodebuild` succeeds. After prebuild, rebuild with `./scripts/deploy-ios.sh`.
+
 ## 4. Connect Your iPhone
 
 1. Plug your iPhone into your Mac via USB
@@ -189,6 +191,14 @@ Then start Metro (`npx expo start --dev-client`) and reopen the app. If still st
 xcodebuild -workspace ios/Pechi.xcworkspace -scheme Pechi -showdestinations 2>/dev/null \
   | grep "platform:iOS, arch:"
 ```
+
+### `NativeModule: AsyncStorage is null` / `Cannot find native module 'ExponentAV'`
+You added a native package but didn't regenerate the native project. The `ios/` folder still contains the old build without the new module linked.
+```bash
+npx expo prebuild --clean
+./scripts/deploy-ios.sh
+```
+Then restart Metro (`npx expo start --dev-client`). This is needed any time you `npm install` a package with native code (not for JS-only packages).
 
 ### Port 8081 already in use
 ```bash

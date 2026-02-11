@@ -1,11 +1,12 @@
 import React from 'react';
 import { LayoutAnimation, Platform, StyleSheet, Text, TouchableOpacity, UIManager, View } from 'react-native';
-import type { SidePanelItem, JobCard } from '../types';
+import type { SidePanelItem } from '../types';
 import { VehicleInfoCard } from './VehicleInfoCard';
 import { ServiceHistoryCard } from './ServiceHistoryCard';
 import { PartsListCard } from './PartsListCard';
 import { ServicePackagesCard } from './ServicePackagesCard';
-import { colors, spacing, borderRadius } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
+import { spacing, borderRadius } from '../constants/theme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -27,6 +28,8 @@ interface Props {
 }
 
 export function PanelCard({ panel, onToggleExpand, onDismiss, onOpenJobCard }: Props) {
+  const { colors } = useTheme();
+
   const handleToggle = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     if (panel.content.type === 'job_card' && !panel.isExpanded) {
@@ -49,36 +52,57 @@ export function PanelCard({ panel, onToggleExpand, onDismiss, onOpenJobCard }: P
       case 'job_card':
         return (
           <TouchableOpacity
-            style={styles.jobCardButton}
+            style={[
+              styles.jobCardButton,
+              {
+                backgroundColor: colors.accentSurface,
+                borderColor: colors.accentBorder,
+              },
+            ]}
             onPress={() => onOpenJobCard(panel)}
             activeOpacity={0.7}
           >
-            <Text style={styles.jobCardButtonText}>Open Job Card</Text>
+            <Text style={[styles.jobCardButtonText, { color: colors.accent }]}>
+              Open Job Card
+            </Text>
           </TouchableOpacity>
         );
     }
   };
 
   return (
-    <View style={styles.card}>
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: colors.surfaceElevated,
+          borderColor: colors.surfaceBorder,
+        },
+      ]}
+    >
       <TouchableOpacity style={styles.header} onPress={handleToggle} activeOpacity={0.7}>
         <View style={styles.headerLeft}>
           <View
             style={[
               styles.badge,
-              panel.isActionable && styles.badgeAction,
+              { backgroundColor: colors.surface },
+              panel.isActionable && {
+                backgroundColor: colors.accentSurface,
+                borderWidth: 1,
+                borderColor: colors.accentBorder,
+              },
             ]}
           >
             <Text
               style={[
                 styles.badgeText,
-                panel.isActionable && styles.badgeTextAction,
+                { color: panel.isActionable ? colors.accent : colors.textMuted },
               ]}
             >
               {TYPE_LABELS[panel.panelType] || panel.panelType}
             </Text>
           </View>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
             {panel.title}
           </Text>
         </View>
@@ -90,10 +114,12 @@ export function PanelCard({ panel, onToggleExpand, onDismiss, onOpenJobCard }: P
               onPress={() => onDismiss(panel.id)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Text style={styles.dismissText}>{'\u00D7'}</Text>
+              <Text style={[styles.dismissText, { color: colors.textMuted }]}>
+                {'\u00D7'}
+              </Text>
             </TouchableOpacity>
           )}
-          <Text style={styles.chevron}>
+          <Text style={[styles.chevron, { color: colors.textMuted }]}>
             {panel.isExpanded ? '\u25B4' : '\u25BE'}
           </Text>
         </View>
@@ -108,9 +134,7 @@ export function PanelCard({ panel, onToggleExpand, onDismiss, onOpenJobCard }: P
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'rgba(30, 28, 33, 0.8)',
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.06)',
     borderRadius: borderRadius.lg,
     marginBottom: spacing.sm,
     overflow: 'hidden',
@@ -135,28 +159,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   badge: {
-    backgroundColor: 'rgba(240, 235, 227, 0.06)',
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: borderRadius.full,
   },
-  badgeAction: {
-    backgroundColor: colors.accentSurface,
-    borderWidth: 1,
-    borderColor: colors.accentBorder,
-  },
   badgeText: {
-    color: colors.textMuted,
     fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  badgeTextAction: {
-    color: colors.accent,
-  },
   title: {
-    color: colors.text,
     fontSize: 14,
     fontWeight: '500',
     flex: 1,
@@ -168,11 +181,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dismissText: {
-    color: colors.textMuted,
     fontSize: 18,
   },
   chevron: {
-    color: colors.textMuted,
     fontSize: 12,
   },
   body: {
@@ -180,15 +191,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   jobCardButton: {
-    backgroundColor: colors.accentSurface,
     borderWidth: 1,
-    borderColor: colors.accentBorder,
     borderRadius: borderRadius.sm,
     paddingVertical: spacing.md,
     alignItems: 'center',
   },
   jobCardButtonText: {
-    color: colors.accent,
     fontWeight: '600',
     fontSize: 14,
   },

@@ -1,39 +1,47 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import type { ServiceHistoryData } from '../types';
-import { colors, spacing, borderRadius } from '../constants/theme';
+import { spacing, borderRadius } from '../constants/theme';
 
 interface Props {
   data: ServiceHistoryData;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  completed: colors.statusGreen,
-  scheduled: colors.statusYellow,
-  in_progress: colors.accentLight,
-};
-
 export function ServiceHistoryCard({ data }: Props) {
+  const { colors } = useTheme();
+
+  const statusColors: Record<string, string> = {
+    completed: colors.statusGreen,
+    scheduled: colors.statusYellow,
+    in_progress: colors.accentLight,
+  };
+
   return (
     <View>
       {data.vehicleLabel ? (
-        <Text style={styles.subtitle}>{data.vehicleLabel}</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          {data.vehicleLabel}
+        </Text>
       ) : null}
 
       {data.records.map((r, i) => (
-        <View key={i} style={styles.record}>
+        <View
+          key={i}
+          style={[styles.record, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}
+        >
           <View style={styles.recordHeader}>
-            <Text style={styles.date}>{r.date}</Text>
+            <Text style={[styles.date, { color: colors.textSecondary }]}>{r.date}</Text>
             <View
               style={[
                 styles.statusBadge,
-                { backgroundColor: (STATUS_COLORS[r.status] || colors.textMuted) + '22' },
+                { backgroundColor: (statusColors[r.status] || colors.textMuted) + '22' },
               ]}
             >
               <Text
                 style={[
                   styles.statusText,
-                  { color: STATUS_COLORS[r.status] || colors.textMuted },
+                  { color: statusColors[r.status] || colors.textMuted },
                 ]}
               >
                 {r.status}
@@ -41,18 +49,32 @@ export function ServiceHistoryCard({ data }: Props) {
             </View>
           </View>
 
-          <Text style={styles.type}>{r.type}</Text>
-          {r.description ? <Text style={styles.desc}>{r.description}</Text> : null}
+          <Text style={[styles.type, { color: colors.text }]}>{r.type}</Text>
+          {r.description ? (
+            <Text style={[styles.desc, { color: colors.textSecondary }]}>
+              {r.description}
+            </Text>
+          ) : null}
 
           <View style={styles.footer}>
-            <Text style={[styles.cost, r.cost === 0 && styles.costFree]}>
+            <Text
+              style={[
+                styles.cost,
+                { color: r.cost === 0 ? colors.statusGreen : colors.accent },
+              ]}
+            >
               {r.cost === 0 ? 'Free' : `\u20B9${r.cost.toLocaleString()}`}
             </Text>
             {r.partsReplaced.length > 0 && (
               <View style={styles.tags}>
                 {r.partsReplaced.map((p, j) => (
-                  <View key={j} style={styles.tag}>
-                    <Text style={styles.tagText}>{p}</Text>
+                  <View
+                    key={j}
+                    style={[styles.tag, { backgroundColor: colors.surface }]}
+                  >
+                    <Text style={[styles.tagText, { color: colors.textSecondary }]}>
+                      {p}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -60,7 +82,9 @@ export function ServiceHistoryCard({ data }: Props) {
           </View>
 
           {r.nextServiceDate ? (
-            <Text style={styles.next}>Next service: {r.nextServiceDate}</Text>
+            <Text style={[styles.next, { color: colors.textMuted }]}>
+              Next service: {r.nextServiceDate}
+            </Text>
           ) : null}
         </View>
       ))}
@@ -70,14 +94,11 @@ export function ServiceHistoryCard({ data }: Props) {
 
 const styles = StyleSheet.create({
   subtitle: {
-    color: colors.textSecondary,
     fontSize: 12,
     marginBottom: spacing.md,
   },
   record: {
-    backgroundColor: 'rgba(240, 235, 227, 0.02)',
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.05)',
     borderRadius: borderRadius.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
@@ -89,7 +110,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   date: {
-    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -104,13 +124,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   type: {
-    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 2,
   },
   desc: {
-    color: colors.textSecondary,
     fontSize: 13,
     lineHeight: 18,
     marginBottom: spacing.sm,
@@ -122,12 +140,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   cost: {
-    color: colors.accent,
     fontSize: 13,
     fontWeight: '600',
-  },
-  costFree: {
-    color: colors.statusGreen,
   },
   tags: {
     flexDirection: 'row',
@@ -135,17 +149,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   tag: {
-    backgroundColor: 'rgba(240, 235, 227, 0.06)',
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: borderRadius.full,
   },
   tagText: {
-    color: colors.textSecondary,
     fontSize: 10,
   },
   next: {
-    color: colors.textMuted,
     fontSize: 11,
     marginTop: spacing.sm,
     fontStyle: 'italic',

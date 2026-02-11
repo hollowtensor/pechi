@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LanguageToggle } from './LanguageToggle';
-import { colors, borderRadius, spacing } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
+import { borderRadius, spacing } from '../constants/theme';
 
 interface Props {
   connected: boolean;
@@ -24,38 +25,41 @@ export function ControlBar({
   onClear,
   onLanguageChange,
 }: Props) {
+  const { colors } = useTheme();
   return (
     <View style={styles.container}>
       {!connected ? (
         <TouchableOpacity
-          style={[styles.btn, styles.btnStart]}
+          style={[styles.btn, { backgroundColor: colors.accent }]}
           onPress={onStart}
           disabled={connecting}
           activeOpacity={0.7}
         >
-          <Text style={styles.btnStartText}>
+          <Text style={[styles.btnText, { color: colors.text }]}>
             {connecting ? 'Connecting...' : 'Start'}
           </Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
-          style={[styles.btn, styles.btnStop]}
+          style={[styles.btn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder }]}
           onPress={onStop}
           activeOpacity={0.7}
         >
-          <Text style={styles.btnStopText}>Stop</Text>
+          <Text style={[styles.btnText, { color: colors.textSecondary }]}>Stop</Text>
         </TouchableOpacity>
       )}
 
       <TouchableOpacity
-        style={[styles.btn, styles.btnClear, messageCount === 0 && styles.btnDisabled]}
+        style={[
+          styles.btn,
+          { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorder },
+          messageCount === 0 && styles.btnDisabled,
+        ]}
         onPress={onClear}
         disabled={messageCount === 0}
         activeOpacity={0.7}
       >
-        <Text style={[styles.btnClearText, messageCount === 0 && styles.btnTextDisabled]}>
-          Clear
-        </Text>
+        <Text style={[styles.btnText, { color: colors.textMuted }]}>Clear</Text>
       </TouchableOpacity>
 
       <View style={styles.spacer} />
@@ -85,38 +89,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  btnStart: {
-    backgroundColor: colors.accent,
-  },
-  btnStartText: {
-    color: colors.text,
+  btnText: {
     fontWeight: '600',
     fontSize: 14,
-  },
-  btnStop: {
-    backgroundColor: 'rgba(240, 235, 227, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.1)',
-  },
-  btnStopText: {
-    color: colors.textSecondary,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  btnClear: {
-    backgroundColor: 'rgba(240, 235, 227, 0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.06)',
-  },
-  btnClearText: {
-    color: colors.textMuted,
-    fontSize: 13,
   },
   btnDisabled: {
     opacity: 0.4,
-  },
-  btnTextDisabled: {
-    color: colors.textMuted,
   },
   spacer: {
     flex: 1,

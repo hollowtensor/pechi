@@ -1,8 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
-import { colors, spacing, borderRadius } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
+import { spacing, borderRadius } from '../constants/theme';
 
 export function ThinkingIndicator() {
+  const { colors } = useTheme();
   const dots = useRef([
     new Animated.Value(0),
     new Animated.Value(0),
@@ -34,13 +36,22 @@ export function ThinkingIndicator() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.bubble}>
+      <View
+        style={[
+          styles.bubble,
+          {
+            backgroundColor: colors.agentBubble,
+            borderColor: colors.agentBubbleBorder,
+          },
+        ]}
+      >
         {dots.map((dot, i) => (
           <Animated.View
             key={i}
             style={[
               styles.dot,
               {
+                backgroundColor: colors.textSecondary,
                 opacity: dot.interpolate({
                   inputRange: [0, 1],
                   outputRange: [0.3, 0.8],
@@ -70,9 +81,7 @@ const styles = StyleSheet.create({
   },
   bubble: {
     flexDirection: 'row',
-    backgroundColor: colors.agentBubble,
     borderWidth: 1,
-    borderColor: colors.agentBubbleBorder,
     borderRadius: borderRadius.lg,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
@@ -82,6 +91,5 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: colors.textSecondary,
   },
 });

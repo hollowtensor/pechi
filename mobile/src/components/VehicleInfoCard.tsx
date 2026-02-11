@@ -1,17 +1,19 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import type { VehicleInfoData } from '../types';
-import { colors, spacing } from '../constants/theme';
+import { spacing } from '../constants/theme';
 
 interface Props {
   data: VehicleInfoData;
 }
 
 function Field({ label, value }: { label: string; value: string | number }) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value}</Text>
+    <View style={[styles.field, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}>
+      <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>
+      <Text style={[styles.value, { color: colors.text }]}>{value}</Text>
     </View>
   );
 }
@@ -42,14 +44,11 @@ const styles = StyleSheet.create({
   },
   field: {
     width: '47%',
-    backgroundColor: 'rgba(240, 235, 227, 0.03)',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.05)',
     padding: spacing.md,
   },
   label: {
-    color: colors.textMuted,
     fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -57,7 +56,6 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   value: {
-    color: colors.text,
     fontSize: 14,
     fontWeight: '500',
   },

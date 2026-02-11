@@ -108,5 +108,15 @@ export function useLiveKit({
     );
   }, []);
 
-  return { connect, disconnect, publishJobCard };
+  const publishTextMessage = useCallback((text: string) => {
+    if (!roomRef.current) return;
+    roomRef.current.localParticipant.publishData(
+      new TextEncoder().encode(
+        JSON.stringify({ type: 'user_text', text }),
+      ),
+      { reliable: true, topic: 'user_action' },
+    );
+  }, []);
+
+  return { connect, disconnect, publishJobCard, publishTextMessage };
 }

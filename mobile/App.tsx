@@ -8,15 +8,23 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native';
 import { HomeScreen } from './src/screens/HomeScreen';
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+
+function ThemedStatusBar() {
+  const { mode } = useTheme();
+  return <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />;
+}
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        <HomeScreen />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ThemeProvider>
+      <GestureHandlerRootView style={styles.root}>
+        <SafeAreaProvider>
+          <ThemedStatusBar />
+          <HomeScreen />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ThemeProvider>
   );
 }
 

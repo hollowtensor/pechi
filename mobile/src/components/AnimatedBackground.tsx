@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { Animated, Dimensions, StyleSheet, View } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import type { AppState } from '../types';
 
 interface Props {
@@ -41,6 +42,8 @@ function randomInRange(min: number, max: number) {
 }
 
 export const AnimatedBackground = React.memo(function AnimatedBackground({ state }: Props) {
+  const { colors } = useTheme();
+
   const dots = useMemo<Dot[]>(() => {
     return Array.from({ length: DOT_COUNT }, () => ({
       x: new Animated.Value(randomInRange(0, SCREEN_W)),
@@ -48,9 +51,9 @@ export const AnimatedBackground = React.memo(function AnimatedBackground({ state
       opacity: new Animated.Value(0.1),
       scale: new Animated.Value(1),
       size: randomInRange(3, 8),
-      color: Math.random() < 0.7 ? '#c9463d' : '#f0ebe3',
+      color: Math.random() < 0.7 ? colors.accent : colors.text,
     }));
-  }, []);
+  }, [colors.accent, colors.text]);
 
   const driftAnimsRef = useRef<Animated.CompositeAnimation[]>([]);
 

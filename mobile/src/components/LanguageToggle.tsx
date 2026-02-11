@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors, borderRadius, spacing } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
+import { borderRadius, spacing } from '../constants/theme';
 
 interface Props {
   language: 'en' | 'hi';
@@ -9,23 +10,53 @@ interface Props {
 }
 
 export function LanguageToggle({ language, onSelect, disabled }: Props) {
+  const { colors } = useTheme();
   return (
-    <View style={[styles.container, disabled && styles.disabled]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.surfaceBorder,
+        },
+        disabled && styles.disabled,
+      ]}
+    >
       <TouchableOpacity
-        style={[styles.segment, language === 'en' && styles.segmentActive]}
+        style={[
+          styles.segment,
+          language === 'en' && { backgroundColor: colors.accentSurface },
+        ]}
         onPress={() => onSelect('en')}
         disabled={disabled}
         activeOpacity={0.7}
       >
-        <Text style={[styles.label, language === 'en' && styles.labelActive]}>EN</Text>
+        <Text
+          style={[
+            styles.label,
+            { color: language === 'en' ? colors.accent : colors.textMuted },
+          ]}
+        >
+          EN
+        </Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.segment, language === 'hi' && styles.segmentActive]}
+        style={[
+          styles.segment,
+          language === 'hi' && { backgroundColor: colors.accentSurface },
+        ]}
         onPress={() => onSelect('hi')}
         disabled={disabled}
         activeOpacity={0.7}
       >
-        <Text style={[styles.label, language === 'hi' && styles.labelActive]}>HI</Text>
+        <Text
+          style={[
+            styles.label,
+            { color: language === 'hi' ? colors.accent : colors.textMuted },
+          ]}
+        >
+          HI
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -34,10 +65,8 @@ export function LanguageToggle({ language, onSelect, disabled }: Props) {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(240, 235, 227, 0.04)',
     borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.08)',
     overflow: 'hidden',
   },
   disabled: {
@@ -49,16 +78,9 @@ const styles = StyleSheet.create({
     minWidth: 40,
     alignItems: 'center',
   },
-  segmentActive: {
-    backgroundColor: colors.accentSurface,
-  },
   label: {
-    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
-  },
-  labelActive: {
-    color: colors.accent,
   },
 });

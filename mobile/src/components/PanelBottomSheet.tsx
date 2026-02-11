@@ -2,8 +2,9 @@ import React, { useCallback, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { PanelCard } from './PanelCard';
+import { useTheme } from '../contexts/ThemeContext';
 import type { SidePanelItem } from '../types';
-import { colors, spacing } from '../constants/theme';
+import { spacing } from '../constants/theme';
 
 interface Props {
   panels: SidePanelItem[];
@@ -18,12 +19,32 @@ export function PanelBottomSheet({
   onDismiss,
   onOpenJobCard,
 }: Props) {
+  const { colors } = useTheme();
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ['8%', '40%', '85%'], []);
 
-  const handleSheetChanges = useCallback((_index: number) => {
-    // could track sheet state here if needed
-  }, []);
+  const handleSheetChanges = useCallback((_index: number) => {}, []);
+
+  const bgStyle = useMemo(
+    () => ({
+      backgroundColor: colors.sheetBackground,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.surfaceBorder,
+      borderBottomWidth: 0,
+    }),
+    [colors],
+  );
+
+  const handleStyle = useMemo(
+    () => ({
+      backgroundColor: colors.sheetHandle,
+      width: 36,
+      height: 4,
+    }),
+    [colors],
+  );
 
   if (panels.length === 0) return null;
 
@@ -33,8 +54,8 @@ export function PanelBottomSheet({
       index={1}
       snapPoints={snapPoints}
       onChange={handleSheetChanges}
-      backgroundStyle={styles.sheetBackground}
-      handleIndicatorStyle={styles.handleIndicator}
+      backgroundStyle={bgStyle}
+      handleIndicatorStyle={handleStyle}
       enablePanDownToClose={false}
     >
       <BottomSheetScrollView
@@ -57,19 +78,6 @@ export function PanelBottomSheet({
 }
 
 const styles = StyleSheet.create({
-  sheetBackground: {
-    backgroundColor: colors.sheetBackground,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.06)',
-    borderBottomWidth: 0,
-  },
-  handleIndicator: {
-    backgroundColor: colors.sheetHandle,
-    width: 36,
-    height: 4,
-  },
   content: {
     padding: spacing.lg,
   },

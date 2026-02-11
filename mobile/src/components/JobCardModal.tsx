@@ -11,8 +11,9 @@ import {
   View,
 } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useTheme } from '../contexts/ThemeContext';
 import type { JobCard } from '../types';
-import { colors, spacing, borderRadius } from '../constants/theme';
+import { spacing, borderRadius } from '../constants/theme';
 
 interface Props {
   visible: boolean;
@@ -29,6 +30,7 @@ export function JobCardModal({
   onCancel,
   onUpdate,
 }: Props) {
+  const { mode, colors } = useTheme();
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const handleRemovePart = (index: number) => {
@@ -72,18 +74,22 @@ export function JobCardModal({
       onRequestClose={onCancel}
     >
       <KeyboardAvoidingView
-        style={styles.modalRoot}
+        style={[styles.modalRoot, { backgroundColor: colors.background }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Service Job Card</Text>
+        <View style={[styles.header, { borderBottomColor: colors.surfaceBorder }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
+            Service Job Card
+          </Text>
           <TouchableOpacity
-            style={styles.closeBtn}
+            style={[styles.closeBtn, { backgroundColor: colors.surface }]}
             onPress={onCancel}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={styles.closeText}>{'\u00D7'}</Text>
+            <Text style={[styles.closeText, { color: colors.textSecondary }]}>
+              {'\u00D7'}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -95,7 +101,9 @@ export function JobCardModal({
         >
           {/* Customer & Vehicle */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Customer & Vehicle</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+              Customer & Vehicle
+            </Text>
             <View style={styles.grid}>
               <Field label="Customer" value={jobCard.customer.name} />
               <Field label="Phone" value={jobCard.customer.phone} />
@@ -114,29 +122,42 @@ export function JobCardModal({
           {/* Service Package */}
           {jobCard.servicePackage && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Service Package</Text>
-              <View style={styles.pkgCard}>
+              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+                Service Package
+              </Text>
+              <View
+                style={[
+                  styles.pkgCard,
+                  { backgroundColor: colors.surface, borderColor: colors.surfaceBorder },
+                ]}
+              >
                 <View style={styles.pkgTop}>
                   <View style={styles.pkgInfo}>
-                    <Text style={styles.pkgName}>
+                    <Text style={[styles.pkgName, { color: colors.text }]}>
                       {jobCard.servicePackage.name}
                     </Text>
-                    <Text style={styles.pkgPrice}>
+                    <Text style={[styles.pkgPrice, { color: colors.accent }]}>
                       {`\u20B9${jobCard.servicePackage.price.toLocaleString()}`}
                     </Text>
                   </View>
                   <TouchableOpacity
-                    style={styles.removeBtn}
+                    style={[styles.removeBtn, { backgroundColor: colors.surface }]}
                     onPress={handleRemovePackage}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Text style={styles.removeText}>{'\u00D7'}</Text>
+                    <Text style={[styles.removeText, { color: colors.textMuted }]}>
+                      {'\u00D7'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
                 {jobCard.servicePackage.includes.map((item, i) => (
                   <View key={i} style={styles.includeRow}>
-                    <Text style={styles.bullet}>{'\u2022'}</Text>
-                    <Text style={styles.includeText}>{item}</Text>
+                    <Text style={[styles.bullet, { color: colors.textMuted }]}>
+                      {'\u2022'}
+                    </Text>
+                    <Text style={[styles.includeText, { color: colors.textSecondary }]}>
+                      {item}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -146,22 +167,36 @@ export function JobCardModal({
           {/* Parts */}
           {jobCard.parts.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Parts</Text>
+              <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+                Parts
+              </Text>
               {jobCard.parts.map((part, i) => (
-                <View key={i} style={styles.lineItem}>
+                <View
+                  key={i}
+                  style={[
+                    styles.lineItem,
+                    { backgroundColor: colors.surface, borderColor: colors.surfaceBorder },
+                  ]}
+                >
                   <View style={styles.lineInfo}>
-                    <Text style={styles.lineName}>{part.name}</Text>
-                    <Text style={styles.lineSub}>{part.partNumber}</Text>
+                    <Text style={[styles.lineName, { color: colors.text }]}>
+                      {part.name}
+                    </Text>
+                    <Text style={[styles.lineSub, { color: colors.textMuted }]}>
+                      {part.partNumber}
+                    </Text>
                   </View>
-                  <Text style={styles.linePrice}>
+                  <Text style={[styles.linePrice, { color: colors.text }]}>
                     {`\u20B9${part.totalPrice.toLocaleString()}`}
                   </Text>
                   <TouchableOpacity
-                    style={styles.removeBtn}
+                    style={[styles.removeBtn, { backgroundColor: colors.surface }]}
                     onPress={() => handleRemovePart(i)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Text style={styles.removeText}>{'\u00D7'}</Text>
+                    <Text style={[styles.removeText, { color: colors.textMuted }]}>
+                      {'\u00D7'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -170,13 +205,18 @@ export function JobCardModal({
 
           {/* Preferred Date */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Preferred Date</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+              Preferred Date
+            </Text>
             <TouchableOpacity
-              style={styles.dateInput}
+              style={[
+                styles.dateInput,
+                { backgroundColor: colors.surface, borderColor: colors.surfaceBorder },
+              ]}
               onPress={() => setShowDatePicker(true)}
               activeOpacity={0.7}
             >
-              <Text style={styles.dateText}>
+              <Text style={[styles.dateText, { color: colors.text }]}>
                 {jobCard.preferredDate || 'Select a date'}
               </Text>
             </TouchableOpacity>
@@ -187,16 +227,25 @@ export function JobCardModal({
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 minimumDate={new Date()}
                 onChange={handleDateChange}
-                themeVariant="dark"
+                themeVariant={mode}
               />
             )}
           </View>
 
           {/* Notes */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Notes</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+              Notes
+            </Text>
             <TextInput
-              style={styles.notesInput}
+              style={[
+                styles.notesInput,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.surfaceBorder,
+                  color: colors.text,
+                },
+              ]}
               value={jobCard.notes}
               onChangeText={handleNotesChange}
               placeholder="Any special requests..."
@@ -208,9 +257,11 @@ export function JobCardModal({
           </View>
 
           {/* Total */}
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total Estimate</Text>
-            <Text style={styles.totalAmount}>
+          <View style={[styles.totalRow, { borderTopColor: colors.surfaceBorder }]}>
+            <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>
+              Total Estimate
+            </Text>
+            <Text style={[styles.totalAmount, { color: colors.accent }]}>
               {`\u20B9${jobCard.totalEstimate.toLocaleString()}`}
             </Text>
           </View>
@@ -218,14 +269,19 @@ export function JobCardModal({
           {/* Actions */}
           <View style={styles.actions}>
             <TouchableOpacity
-              style={styles.cancelBtn}
+              style={[
+                styles.cancelBtn,
+                { backgroundColor: colors.surface, borderColor: colors.surfaceBorder },
+              ]}
               onPress={onCancel}
               activeOpacity={0.7}
             >
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>
+                Cancel
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.confirmBtn}
+              style={[styles.confirmBtn, { backgroundColor: colors.accent }]}
               onPress={() => onConfirm(jobCard)}
               activeOpacity={0.7}
             >
@@ -239,10 +295,16 @@ export function JobCardModal({
 }
 
 function Field({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <Text style={styles.fieldValue}>{value}</Text>
+    <View
+      style={[
+        styles.field,
+        { backgroundColor: colors.surface, borderColor: colors.surfaceBorder },
+      ]}
+    >
+      <Text style={[styles.fieldLabel, { color: colors.textMuted }]}>{label}</Text>
+      <Text style={[styles.fieldValue, { color: colors.text }]}>{value}</Text>
     </View>
   );
 }
@@ -250,7 +312,6 @@ function Field({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   modalRoot: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -260,10 +321,8 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceBorder,
   },
   headerTitle: {
-    color: colors.text,
     fontSize: 20,
     fontWeight: '600',
   },
@@ -271,12 +330,10 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(240, 235, 227, 0.06)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeText: {
-    color: colors.textSecondary,
     fontSize: 22,
     lineHeight: 24,
   },
@@ -291,7 +348,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   sectionTitle: {
-    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -305,14 +361,11 @@ const styles = StyleSheet.create({
   },
   field: {
     width: '47%',
-    backgroundColor: 'rgba(240, 235, 227, 0.03)',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.05)',
     padding: spacing.md,
   },
   fieldLabel: {
-    color: colors.textMuted,
     fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -320,14 +373,11 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   fieldValue: {
-    color: colors.text,
     fontSize: 14,
     fontWeight: '500',
   },
   pkgCard: {
-    backgroundColor: 'rgba(240, 235, 227, 0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.06)',
     borderRadius: borderRadius.md,
     padding: spacing.lg,
   },
@@ -341,12 +391,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   pkgName: {
-    color: colors.text,
     fontSize: 15,
     fontWeight: '600',
   },
   pkgPrice: {
-    color: colors.accent,
     fontSize: 14,
     fontWeight: '600',
     marginTop: 2,
@@ -356,21 +404,17 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   bullet: {
-    color: colors.textMuted,
     fontSize: 13,
     marginRight: spacing.sm,
   },
   includeText: {
-    color: colors.textSecondary,
     fontSize: 13,
     flex: 1,
   },
   lineItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(240, 235, 227, 0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.05)',
     borderRadius: borderRadius.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
@@ -379,17 +423,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   lineName: {
-    color: colors.text,
     fontSize: 14,
     fontWeight: '500',
   },
   lineSub: {
-    color: colors.textMuted,
     fontSize: 11,
     marginTop: 1,
   },
   linePrice: {
-    color: colors.text,
     fontSize: 14,
     fontWeight: '600',
     marginHorizontal: spacing.md,
@@ -398,33 +439,25 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(240, 235, 227, 0.06)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   removeText: {
-    color: colors.textMuted,
     fontSize: 18,
     lineHeight: 20,
   },
   dateInput: {
-    backgroundColor: 'rgba(240, 235, 227, 0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.08)',
     borderRadius: borderRadius.sm,
     padding: spacing.lg,
   },
   dateText: {
-    color: colors.text,
     fontSize: 15,
   },
   notesInput: {
-    backgroundColor: 'rgba(240, 235, 227, 0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.08)',
     borderRadius: borderRadius.sm,
     padding: spacing.lg,
-    color: colors.text,
     fontSize: 15,
     minHeight: 80,
   },
@@ -434,18 +467,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: colors.surfaceBorder,
     marginBottom: spacing.xl,
   },
   totalLabel: {
-    color: colors.textSecondary,
     fontSize: 14,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   totalAmount: {
-    color: colors.accent,
     fontSize: 22,
     fontWeight: '700',
   },
@@ -455,9 +485,7 @@ const styles = StyleSheet.create({
   },
   cancelBtn: {
     flex: 1,
-    backgroundColor: 'rgba(240, 235, 227, 0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(240, 235, 227, 0.1)',
     borderRadius: borderRadius.sm,
     paddingVertical: spacing.lg,
     alignItems: 'center',
@@ -465,13 +493,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cancelBtnText: {
-    color: colors.textSecondary,
     fontWeight: '600',
     fontSize: 15,
   },
   confirmBtn: {
     flex: 1,
-    backgroundColor: colors.accent,
     borderRadius: borderRadius.sm,
     paddingVertical: spacing.lg,
     alignItems: 'center',
@@ -479,7 +505,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   confirmBtnText: {
-    color: colors.text,
+    color: '#fff',
     fontWeight: '600',
     fontSize: 15,
   },

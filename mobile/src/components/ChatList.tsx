@@ -2,8 +2,9 @@ import React, { useRef, useEffect } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { ChatMessage } from './ChatMessage';
 import { ThinkingIndicator } from './ThinkingIndicator';
+import { useTheme } from '../contexts/ThemeContext';
 import type { ChatMessage as ChatMessageType, AppState } from '../types';
-import { colors, spacing } from '../constants/theme';
+import { spacing } from '../constants/theme';
 
 interface Props {
   messages: ChatMessageType[];
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function ChatList({ messages, appState, connected }: Props) {
+  const { colors } = useTheme();
   const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -31,10 +33,10 @@ export function ChatList({ messages, appState, connected }: Props) {
   if (messages.length === 0 && appState !== 'thinking') {
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.placeholder}>
+        <Text style={[styles.placeholder, { color: colors.textMuted }]}>
           {connected
             ? 'Ask about your vehicle, service history, or parts...'
-            : 'Press Start and speak to begin...'}
+            : 'Tap the mic and speak to begin...'}
         </Text>
       </View>
     );
@@ -68,7 +70,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xxl,
   },
   placeholder: {
-    color: colors.textMuted,
     fontSize: 15,
     textAlign: 'center',
     lineHeight: 22,

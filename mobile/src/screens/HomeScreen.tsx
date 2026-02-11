@@ -1,22 +1,26 @@
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../contexts/ThemeContext';
 import { AnimatedBackground } from '../components/AnimatedBackground';
-import { GlassCard } from '../components/GlassCard';
-import { ControlBar } from '../components/ControlBar';
-import { StatusIndicator } from '../components/StatusIndicator';
+import { ThemeToggle } from '../components/ThemeToggle';
+import { LanguageToggle } from '../components/LanguageToggle';
+import { ClearButton } from '../components/ClearButton';
 import { ChatList } from '../components/ChatList';
+import { InputDock } from '../components/InputDock';
 import { PanelBottomSheet } from '../components/PanelBottomSheet';
 import { JobCardModal } from '../components/JobCardModal';
+import { GreetingOverlay } from '../components/GreetingOverlay';
 import { useAppState } from '../hooks/useAppState';
 import { useLiveKit } from '../hooks/useLiveKit';
 import type { SidePanelItem, JobCard } from '../types';
-import { colors, spacing } from '../constants/theme';
+import { spacing } from '../constants/theme';
 
 export function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const state = useAppState();
-  const { connect, disconnect, publishJobCard } = useLiveKit({
+  const { connect, disconnect, publishJobCard, publishTextMessage } = useLiveKit({
     language: state.language,
     setConnected: state.setConnected,
     setConnecting: state.setConnecting,
@@ -25,6 +29,9 @@ export function HomeScreen() {
     handleDataMessage: state.handleDataMessage,
     resultTimerRef: state.resultTimerRef,
   });
+
+  // Greeting overlay
+  const [showGreeting, setShowGreeting] = useState(true);
 
   // Job card modal state
   const [jobCardModalVisible, setJobCardModalVisible] = useState(false);
@@ -66,40 +73,64 @@ export function HomeScreen() {
     [activeJobCardPanel, state],
   );
 
+  const handleMicPress = useCallback(() => {
+    if (state.connected) {
+      disconnect();
+    } else {
+      connect();
+    }
+  }, [state.connected, connect, disconnect]);
+
+  const handleSendText = useCallback(
+    (text: string) => {
+      state.addUserMessage(text);
+      publishTextMessage(text);
+    },
+    [state.addUserMessage, publishTextMessage],
+  );
+
   const activeJobCard =
     activeJobCardPanel?.content.type === 'job_card'
       ? activeJobCardPanel.content.data
       : null;
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <KeyboardAvoidingView
+      style={[styles.root, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <AnimatedBackground state={state.appState} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Pechi</Text>
-        <Text style={styles.tagline}>Maruti Suzuki Service Assistant</Text>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+        <Text style={[styles.title, { color: colors.text }]}>Pechi</Text>
+        <View style={styles.headerActions}>
+          <ThemeToggle />
+          <LanguageToggle
+            language={state.language}
+            onSelect={state.setLanguage}
+            disabled={state.connected}
+          />
+          <ClearButton onClear={state.handleClear} disabled={state.messages.length === 0} />
+        </View>
       </View>
 
-      {/* Main card */}
-      <GlassCard style={styles.mainCard}>
-        <ControlBar
-          connected={state.connected}
-          connecting={state.connecting}
-          messageCount={state.messages.length}
-          language={state.language}
-          onStart={connect}
-          onStop={disconnect}
-          onClear={state.handleClear}
-          onLanguageChange={state.setLanguage}
-        />
-        <StatusIndicator connected={state.connected} status={state.status} />
-        <ChatList
-          messages={state.messages}
-          appState={state.appState}
-          connected={state.connected}
-        />
-      </GlassCard>
+      {/* Chat */}
+      <ChatList
+        messages={state.messages}
+        appState={state.appState}
+        connected={state.connected}
+      />
+
+      {/* Input Dock */}
+      <InputDock
+        connected={state.connected}
+        connecting={state.connecting}
+        status={state.status}
+        appState={state.appState}
+        onMicPress={handleMicPress}
+        onSendText={handleSendText}
+      />
 
       {/* Side panels as bottom sheet */}
       <PanelBottomSheet
@@ -108,6 +139,9 @@ export function HomeScreen() {
         onDismiss={state.handleDismissPanel}
         onOpenJobCard={handleOpenJobCard}
       />
+
+      {/* Greeting video overlay */}
+      {showGreeting && <GreetingOverlay onDone={() => setShowGreeting(false)} />}
 
       {/* Job card full-screen modal */}
       {activeJobCard && (
@@ -119,35 +153,29 @@ export function HomeScreen() {
           onUpdate={handleUpdateJobCard}
         />
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
   },
   title: {
-    color: colors.text,
     fontSize: 28,
     fontWeight: '700',
     letterSpacing: -0.5,
   },
-  tagline: {
-    color: colors.textMuted,
-    fontSize: 13,
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
-  mainCard: {
-    flex: 1,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
 });

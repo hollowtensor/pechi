@@ -96,6 +96,13 @@ export function useAppState() {
     [addSidePanel],
   );
 
+  const addUserMessage = useCallback((text: string) => {
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text, time: new Date().toLocaleTimeString() },
+    ]);
+  }, []);
+
   const handleClear = useCallback(() => {
     setMessages([]);
     setSidePanels([]);
@@ -118,6 +125,7 @@ export function useAppState() {
     handleDataMessage,
     handleToggleExpand,
     handleDismissPanel,
+    addUserMessage,
     handleCancelJobCard,
     handleUpdateJobCard,
     handleClear,

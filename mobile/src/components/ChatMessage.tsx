@@ -1,14 +1,16 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
+import { useTheme } from '../contexts/ThemeContext';
 import type { ChatMessage as ChatMessageType } from '../types';
-import { colors, spacing, borderRadius } from '../constants/theme';
+import { spacing, borderRadius } from '../constants/theme';
 
 interface Props {
   message: ChatMessageType;
 }
 
 export const ChatMessage = React.memo(function ChatMessage({ message }: Props) {
+  const { colors } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(6)).current;
 
@@ -29,6 +31,37 @@ export const ChatMessage = React.memo(function ChatMessage({ message }: Props) {
 
   const isUser = message.role === 'user';
 
+  const mdStyles = useMemo(
+    () => ({
+      body: { color: colors.text, fontSize: 15, lineHeight: 22 },
+      paragraph: { marginTop: 0, marginBottom: 4 },
+      strong: { fontWeight: '700' as const, color: colors.text },
+      em: { fontStyle: 'italic' as const },
+      link: { color: colors.accentLight },
+      bullet_list: { marginTop: 4, marginBottom: 4 },
+      ordered_list: { marginTop: 4, marginBottom: 4 },
+      list_item: { marginBottom: 2 },
+      code_inline: {
+        backgroundColor: colors.surfaceElevated,
+        color: colors.accentLight,
+        fontFamily: 'Courier',
+        fontSize: 13,
+        paddingHorizontal: 4,
+        borderRadius: 3,
+      },
+      fence: {
+        backgroundColor: colors.surface,
+        borderColor: colors.surfaceBorder,
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 10,
+        marginVertical: 4,
+      },
+      code_block: { color: colors.text, fontFamily: 'Courier', fontSize: 13 },
+    }),
+    [colors],
+  );
+
   return (
     <Animated.View
       style={[
@@ -40,70 +73,35 @@ export const ChatMessage = React.memo(function ChatMessage({ message }: Props) {
         },
       ]}
     >
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAgent]}>
+      <View
+        style={[
+          styles.bubble,
+          isUser
+            ? [
+                styles.bubbleUser,
+                {
+                  backgroundColor: colors.userBubble,
+                  borderColor: colors.userBubbleBorder,
+                },
+              ]
+            : [
+                styles.bubbleAgent,
+                {
+                  backgroundColor: colors.agentBubble,
+                  borderColor: colors.agentBubbleBorder,
+                },
+              ],
+        ]}
+      >
         {isUser ? (
-          <Text style={styles.userText}>{message.text}</Text>
+          <Text style={[styles.userText, { color: colors.text }]}>{message.text}</Text>
         ) : (
-          <Markdown style={markdownStyles}>{message.text}</Markdown>
+          <Markdown style={mdStyles}>{message.text}</Markdown>
         )}
-        <Text style={styles.time}>{message.time}</Text>
+        <Text style={[styles.time, { color: colors.textMuted }]}>{message.time}</Text>
       </View>
     </Animated.View>
   );
-});
-
-const markdownStyles = StyleSheet.create({
-  body: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  paragraph: {
-    marginTop: 0,
-    marginBottom: 4,
-  },
-  strong: {
-    fontWeight: '700',
-    color: colors.text,
-  },
-  em: {
-    fontStyle: 'italic',
-  },
-  link: {
-    color: colors.accentLight,
-  },
-  bullet_list: {
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  ordered_list: {
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  list_item: {
-    marginBottom: 2,
-  },
-  code_inline: {
-    backgroundColor: 'rgba(240, 235, 227, 0.08)',
-    color: colors.accentLight,
-    fontFamily: 'Courier',
-    fontSize: 13,
-    paddingHorizontal: 4,
-    borderRadius: 3,
-  },
-  fence: {
-    backgroundColor: 'rgba(240, 235, 227, 0.05)',
-    borderColor: 'rgba(240, 235, 227, 0.08)',
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    marginVertical: 4,
-  },
-  code_block: {
-    color: colors.text,
-    fontFamily: 'Courier',
-    fontSize: 13,
-  },
 });
 
 const styles = StyleSheet.create({
@@ -122,26 +120,19 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+    borderWidth: 1,
   },
   bubbleUser: {
-    backgroundColor: colors.userBubble,
-    borderWidth: 1,
-    borderColor: colors.userBubbleBorder,
     borderBottomRightRadius: 4,
   },
   bubbleAgent: {
-    backgroundColor: colors.agentBubble,
-    borderWidth: 1,
-    borderColor: colors.agentBubbleBorder,
     borderBottomLeftRadius: 4,
   },
   userText: {
-    color: colors.text,
     fontSize: 15,
     lineHeight: 22,
   },
   time: {
-    color: colors.textMuted,
     fontSize: 10,
     marginTop: spacing.xs,
     alignSelf: 'flex-end',
