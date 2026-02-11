@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useJobCards } from '../hooks/useJobCards';
 import { JobCardsHeader } from '../components/jobcards/JobCardsHeader';
@@ -14,6 +14,7 @@ import { spacing } from '../constants/theme';
 export function JobCardsScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const route = useRoute<any>();
   const {
     jobCards,
     loading,
@@ -27,6 +28,14 @@ export function JobCardsScreen() {
   } = useJobCards();
 
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+
+  // Open a specific card if navigated with openCardId param
+  useEffect(() => {
+    const openCardId = route.params?.openCardId;
+    if (openCardId) {
+      loadDetail(openCardId);
+    }
+  }, [route.params?.openCardId, loadDetail]);
 
   // Auto-refresh on tab focus
   useFocusEffect(

@@ -9,8 +9,9 @@ import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { AssistantScreen } from './src/screens/HomeScreen';
@@ -48,7 +49,7 @@ function TabNavigator() {
         component={DashboardScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: size - 4, color }}>🏠</Text>
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
@@ -58,7 +59,7 @@ function TabNavigator() {
         options={{
           tabBarStyle: { display: 'none' },
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: size - 4, color }}>🎙</Text>
+            <Ionicons name="mic-outline" size={size} color={color} />
           ),
         }}
       />
@@ -67,7 +68,7 @@ function TabNavigator() {
         component={JobCardsScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: size - 4, color }}>📋</Text>
+            <Ionicons name="clipboard-outline" size={size} color={color} />
           ),
         }}
       />
