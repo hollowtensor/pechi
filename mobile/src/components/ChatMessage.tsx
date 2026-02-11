@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ChatMessage as ChatMessageType } from '../types';
@@ -7,9 +7,10 @@ import { spacing, borderRadius } from '../constants/theme';
 
 interface Props {
   message: ChatMessageType;
+  onPanelPress?: (panelId: string) => void;
 }
 
-export const ChatMessage = React.memo(function ChatMessage({ message }: Props) {
+export const ChatMessage = React.memo(function ChatMessage({ message, onPanelPress }: Props) {
   const { colors } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(6)).current;
@@ -62,6 +63,41 @@ export const ChatMessage = React.memo(function ChatMessage({ message }: Props) {
     [colors],
   );
 
+  const hasPanelLink = !!message.panelId && !!onPanelPress;
+
+  const bubble = (
+    <View
+      style={[
+        styles.bubble,
+        isUser
+          ? [
+              styles.bubbleUser,
+              {
+                backgroundColor: colors.userBubble,
+                borderColor: colors.userBubbleBorder,
+              },
+            ]
+          : [
+              styles.bubbleAgent,
+              {
+                backgroundColor: colors.agentBubble,
+                borderColor: hasPanelLink ? colors.accent : colors.agentBubbleBorder,
+              },
+            ],
+      ]}
+    >
+      {isUser ? (
+        <Text style={[styles.userText, { color: colors.text }]}>{message.text}</Text>
+      ) : (
+        <Markdown style={mdStyles}>{message.text}</Markdown>
+      )}
+      {hasPanelLink && (
+        <Text style={[styles.panelHint, { color: colors.textMuted }]}>Tap to view details</Text>
+      )}
+      <Text style={[styles.time, { color: colors.textMuted }]}>{message.time}</Text>
+    </View>
+  );
+
   return (
     <Animated.View
       style={[
@@ -73,33 +109,16 @@ export const ChatMessage = React.memo(function ChatMessage({ message }: Props) {
         },
       ]}
     >
-      <View
-        style={[
-          styles.bubble,
-          isUser
-            ? [
-                styles.bubbleUser,
-                {
-                  backgroundColor: colors.userBubble,
-                  borderColor: colors.userBubbleBorder,
-                },
-              ]
-            : [
-                styles.bubbleAgent,
-                {
-                  backgroundColor: colors.agentBubble,
-                  borderColor: colors.agentBubbleBorder,
-                },
-              ],
-        ]}
-      >
-        {isUser ? (
-          <Text style={[styles.userText, { color: colors.text }]}>{message.text}</Text>
-        ) : (
-          <Markdown style={mdStyles}>{message.text}</Markdown>
-        )}
-        <Text style={[styles.time, { color: colors.textMuted }]}>{message.time}</Text>
-      </View>
+      {hasPanelLink ? (
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => onPanelPress(message.panelId!)}
+        >
+          {bubble}
+        </TouchableOpacity>
+      ) : (
+        bubble
+      )}
     </Animated.View>
   );
 });
@@ -131,6 +150,11 @@ const styles = StyleSheet.create({
   userText: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  panelHint: {
+    fontSize: 11,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
   },
   time: {
     fontSize: 10,

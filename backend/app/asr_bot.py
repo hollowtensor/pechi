@@ -296,6 +296,10 @@ class ASRBot:
 
             if resp.status_code == 200:
                 result = resp.json()
+                log.info(f"vLLM response keys: {list(result.keys())}")
+                if "choices" not in result:
+                    log.error(f"Unexpected response: {str(result)[:500]}")
+                    return
                 raw_content = result["choices"][0]["message"]["content"]
                 text = parse_asr_output(raw_content)
                 if text:

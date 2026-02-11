@@ -43,3 +43,49 @@ export function resolveUrl(url: string): string {
     return url;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Job card execution API
+// ---------------------------------------------------------------------------
+
+import type { JobCardListItem, JobCardStatus } from '../types';
+
+export async function fetchJobCards(
+  status?: string,
+): Promise<{ success: boolean; jobCards: JobCardListItem[] }> {
+  const qs = status ? `?status=${status}` : '';
+  const resp = await fetch(`${API_BASE}/api/job-cards${qs}`);
+  return resp.json();
+}
+
+export async function fetchJobCardDetail(
+  id: number,
+): Promise<{ success: boolean; jobCard: JobCardListItem }> {
+  const resp = await fetch(`${API_BASE}/api/job-cards/${id}`);
+  return resp.json();
+}
+
+export async function updateJobCardStatus(
+  id: number,
+  status: JobCardStatus,
+  notes?: string,
+): Promise<{ success: boolean; message?: string }> {
+  const resp = await fetch(`${API_BASE}/api/job-cards/${id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, notes: notes || '' }),
+  });
+  return resp.json();
+}
+
+export async function updateJobCardFields(
+  id: number,
+  fields: { assigned_technician?: string; actual_cost?: number; notes?: string },
+): Promise<{ success: boolean; message?: string }> {
+  const resp = await fetch(`${API_BASE}/api/job-cards/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  return resp.json();
+}

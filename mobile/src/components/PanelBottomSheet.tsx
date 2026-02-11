@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { PanelCard } from './PanelCard';
@@ -8,22 +8,30 @@ import { spacing } from '../constants/theme';
 
 interface Props {
   panels: SidePanelItem[];
+  visible: boolean;
   onToggleExpand: (panelId: string) => void;
   onDismiss: (panelId: string) => void;
   onOpenJobCard: (panel: SidePanelItem) => void;
+  onClose: () => void;
 }
 
 export function PanelBottomSheet({
   panels,
+  visible,
   onToggleExpand,
   onDismiss,
   onOpenJobCard,
+  onClose,
 }: Props) {
   const { colors } = useTheme();
-  const bottomSheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ['8%', '40%', '85%'], []);
+  const snapPoints = useMemo(() => ['40%', '85%'], []);
 
-  const handleSheetChanges = useCallback((_index: number) => {}, []);
+  const handleSheetChanges = useCallback(
+    (index: number) => {
+      if (index === -1) onClose();
+    },
+    [onClose],
+  );
 
   const bgStyle = useMemo(
     () => ({
@@ -46,17 +54,17 @@ export function PanelBottomSheet({
     [colors],
   );
 
-  if (panels.length === 0) return null;
+  // Only mount when visible and there are panels
+  if (!visible || panels.length === 0) return null;
 
   return (
     <BottomSheet
-      ref={bottomSheetRef}
-      index={1}
+      index={0}
       snapPoints={snapPoints}
       onChange={handleSheetChanges}
       backgroundStyle={bgStyle}
       handleIndicatorStyle={handleStyle}
-      enablePanDownToClose={false}
+      enablePanDownToClose
     >
       <BottomSheetScrollView
         contentContainerStyle={styles.content}

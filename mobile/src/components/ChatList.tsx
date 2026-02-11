@@ -10,9 +10,10 @@ interface Props {
   messages: ChatMessageType[];
   appState: AppState;
   connected: boolean;
+  onPanelPress?: (panelId: string) => void;
 }
 
-export function ChatList({ messages, appState, connected }: Props) {
+export function ChatList({ messages, appState, connected, onPanelPress }: Props) {
   const { colors } = useTheme();
   const listRef = useRef<FlatList>(null);
 
@@ -25,7 +26,7 @@ export function ChatList({ messages, appState, connected }: Props) {
   }, [messages.length, appState]);
 
   const renderItem = ({ item }: { item: ChatMessageType }) => (
-    <ChatMessage message={item} />
+    <ChatMessage message={item} onPanelPress={onPanelPress} />
   );
 
   const ListFooter = appState === 'thinking' ? <ThinkingIndicator /> : null;

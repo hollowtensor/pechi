@@ -22,7 +22,14 @@ from .config import (
     LIVEKIT_URL,
     VLLM_URL,
 )
-from .database import init_database
+from .database import (
+    init_database,
+    get_job_cards,
+    get_job_card_by_id,
+    advance_job_card_status,
+    update_job_card_fields,
+    JOB_CARD_STATUSES,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +59,17 @@ class LoginResponse(BaseModel):
 
 class LogoutRequest(BaseModel):
     userId: str
+
+
+class StatusUpdateRequest(BaseModel):
+    status: str
+    notes: Optional[str] = ""
+
+
+class JobCardUpdateRequest(BaseModel):
+    assigned_technician: Optional[str] = None
+    actual_cost: Optional[float] = None
+    notes: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +155,44 @@ async def logout(req: LogoutRequest):
         await bot.stop()
         log.info(f"Logout: user={req.userId}")
     return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# Job card execution endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/job-cards")
+async def list_job_cards(status: Optional[str] = None):
+    """List all job cards, optionally filtered by status."""
+    cards = get_job_cards(status_filter=status)
+    return {"success": True, "jobCards": cards}
+
+
+@app.get("/api/job-cards/{job_id}")
+async def get_job_card_detail(job_id: int):
+    """Get a single job card with full detail."""
+    card = get_job_card_by_id(job_id)
+    if not card:
+        return {"success": False, "message": "Job card not found"}
+    return {"success": True, "jobCard": card}
+
+
+@app.patch("/api/job-cards/{job_id}/status")
+async def update_status(job_id: int, req: StatusUpdateRequest):
+    """Advance job card status (service advisor workflow)."""
+    if req.status not in JOB_CARD_STATUSES:
+        return {"success": False, "message": f"Invalid status. Valid: {JOB_CARD_STATUSES}"}
+    return advance_job_card_status(job_id, req.status, req.notes or "")
+
+
+@app.patch("/api/job-cards/{job_id}")
+async def update_job_card(job_id: int, req: JobCardUpdateRequest):
+    """Update job card fields (technician, actual cost, notes)."""
+    fields = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not fields:
+        return {"success": False, "message": "No fields to update"}
+    return update_job_card_fields(job_id, fields)
 
 
 if __name__ == "__main__":

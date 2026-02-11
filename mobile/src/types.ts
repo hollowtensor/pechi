@@ -6,6 +6,7 @@ export interface ChatMessage {
   role: MessageRole;
   text: string;
   time: string;
+  panelId?: string;
 }
 
 export interface JobCard {
@@ -118,4 +119,75 @@ export interface SidePanelItem {
   content: SidePanelContent;
   isActionable: boolean;
   isExpanded: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Job card execution types
+// ---------------------------------------------------------------------------
+
+export type JobCardStatus =
+  | 'confirmed'
+  | 'received'
+  | 'diagnosis'
+  | 'in_progress'
+  | 'quality_check'
+  | 'ready_for_delivery'
+  | 'completed';
+
+export const JOB_CARD_STATUS_ORDER: JobCardStatus[] = [
+  'confirmed',
+  'received',
+  'diagnosis',
+  'in_progress',
+  'quality_check',
+  'ready_for_delivery',
+  'completed',
+];
+
+export const JOB_CARD_STATUS_LABELS: Record<JobCardStatus, string> = {
+  confirmed: 'Confirmed',
+  received: 'Received',
+  diagnosis: 'Diagnosis',
+  in_progress: 'In Progress',
+  quality_check: 'Quality Check',
+  ready_for_delivery: 'Ready',
+  completed: 'Completed',
+};
+
+export interface StatusHistoryEntry {
+  status: JobCardStatus;
+  timestamp: string;
+  notes: string;
+}
+
+export interface JobCardListItem {
+  id: number;
+  customer_name: string;
+  customer_phone: string;
+  vehicle_model: string;
+  vehicle_variant: string;
+  registration_no: string;
+  mileage: number;
+  status: JobCardStatus;
+  preferred_date: string;
+  total_estimate: number;
+  actual_cost: number | null;
+  assigned_technician: string | null;
+  notes: string;
+  service_items: Array<{
+    name: string;
+    description: string;
+    cost: number;
+  }>;
+  parts: Array<{
+    name: string;
+    partNumber: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+  }>;
+  status_history: StatusHistoryEntry[];
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 }

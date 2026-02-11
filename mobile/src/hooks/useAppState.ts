@@ -9,14 +9,18 @@ export function useAppState() {
   const [appState, setAppState] = useState<AppState>('idle');
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
   const [sidePanels, setSidePanels] = useState<SidePanelItem[]>([]);
+  const [showSheet, setShowSheet] = useState(false);
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Panel IDs waiting to be tagged onto the next agent message
+  const pendingPanelIdsRef = useRef<string[]>([]);
 
   const addSidePanel = useCallback(
     (msg: { panelType: string; title: string; data: unknown; isActionable?: boolean }) => {
+      const panelId = `sp-${Date.now()}`;
       setSidePanels((prev) => {
         const collapsed = prev.map((p) => ({ ...p, isExpanded: false }));
         const newPanel: SidePanelItem = {
-          id: `sp-${Date.now()}`,
+          id: panelId,
           panelType: msg.panelType as SidePanelItem['panelType'],
           title: msg.title,
           content: {
@@ -28,6 +32,9 @@ export function useAppState() {
         };
         return [...collapsed, newPanel];
       });
+      // Queue this panel ID — it will be attached to the next agent message
+      pendingPanelIdsRef.current.push(panelId);
+      setShowSheet(true);
     },
     [],
   );
@@ -38,8 +45,8 @@ export function useAppState() {
     );
   }, []);
 
-  const handleDismissPanel = useCallback((panelId: string) => {
-    setSidePanels((prev) => prev.filter((p) => p.id !== panelId));
+  const handleDismissPanel = useCallback((_panelId: string) => {
+    setShowSheet(false);
   }, []);
 
   const handleCancelJobCard = useCallback((panelId: string) => {
@@ -66,9 +73,13 @@ export function useAppState() {
         ]);
         setAppState('transcribing');
       } else if (msg.type === 'agent_message') {
+        const pendingId = pendingPanelIdsRef.current.length > 0
+          ? pendingPanelIdsRef.current[pendingPanelIdsRef.current.length - 1]
+          : undefined;
+        pendingPanelIdsRef.current = [];
         setMessages((prev) => [
           ...prev,
-          { role: 'agent', text: msg.text, time: new Date().toLocaleTimeString() },
+          { role: 'agent', text: msg.text, time: new Date().toLocaleTimeString(), panelId: pendingId },
         ]);
         setAppState('result');
         clearTimeout(resultTimerRef.current);
@@ -103,9 +114,17 @@ export function useAppState() {
     ]);
   }, []);
 
+  const openPanelById = useCallback((panelId: string) => {
+    setSidePanels((prev) =>
+      prev.map((p) => ({ ...p, isExpanded: p.id === panelId })),
+    );
+    setShowSheet(true);
+  }, []);
+
   const handleClear = useCallback(() => {
     setMessages([]);
     setSidePanels([]);
+    setShowSheet(false);
   }, []);
 
   return {
@@ -121,10 +140,13 @@ export function useAppState() {
     language,
     setLanguage,
     sidePanels,
+    showSheet,
+    setShowSheet,
     resultTimerRef,
     handleDataMessage,
     handleToggleExpand,
     handleDismissPanel,
+    openPanelById,
     addUserMessage,
     handleCancelJobCard,
     handleUpdateJobCard,

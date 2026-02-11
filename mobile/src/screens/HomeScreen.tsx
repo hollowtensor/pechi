@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { AnimatedBackground } from '../components/AnimatedBackground';
 import { ThemeToggle } from '../components/ThemeToggle';
@@ -16,9 +17,10 @@ import { useLiveKit } from '../hooks/useLiveKit';
 import type { SidePanelItem, JobCard } from '../types';
 import { spacing } from '../constants/theme';
 
-export function HomeScreen() {
+export function AssistantScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const navigation = useNavigation<any>();
   const state = useAppState();
   const { connect, disconnect, publishJobCard, publishTextMessage } = useLiveKit({
     language: state.language,
@@ -103,15 +105,27 @@ export function HomeScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Pechi</Text>
-        <View style={styles.headerActions}>
+        <View style={styles.headerSide}>
           <ThemeToggle />
           <LanguageToggle
             language={state.language}
             onSelect={state.setLanguage}
             disabled={state.connected}
           />
+        </View>
+        <Image
+          source={require('../../assets/icon.png')}
+          style={styles.logo}
+        />
+        <View style={[styles.headerSide, styles.headerSideEnd]}>
           <ClearButton onClear={state.handleClear} disabled={state.messages.length === 0} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Home')}
+            style={[styles.closeBtn, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.closeIcon, { color: colors.textMuted }]}>✕</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -120,6 +134,7 @@ export function HomeScreen() {
         messages={state.messages}
         appState={state.appState}
         connected={state.connected}
+        onPanelPress={state.openPanelById}
       />
 
       {/* Input Dock */}
@@ -135,9 +150,11 @@ export function HomeScreen() {
       {/* Side panels as bottom sheet */}
       <PanelBottomSheet
         panels={state.sidePanels}
+        visible={state.showSheet}
         onToggleExpand={state.handleToggleExpand}
         onDismiss={state.handleDismissPanel}
         onOpenJobCard={handleOpenJobCard}
+        onClose={() => state.setShowSheet(false)}
       />
 
       {/* Greeting video overlay */}
@@ -168,14 +185,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  headerActions: {
+  headerSide: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flex: 1,
+  },
+  headerSideEnd: {
+    justifyContent: 'flex-end',
+  },
+  logo: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeIcon: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

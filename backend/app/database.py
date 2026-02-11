@@ -7,7 +7,7 @@ import json
 import logging
 import re
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from .config import DB_PATH
@@ -98,7 +98,12 @@ CREATE TABLE IF NOT EXISTS job_cards (
     service_items TEXT,
     parts TEXT,
     total_estimate REAL,
-    notes TEXT
+    notes TEXT,
+    assigned_technician TEXT,
+    actual_cost REAL,
+    started_at TEXT,
+    completed_at TEXT,
+    status_history TEXT
 );
 """
 
@@ -386,6 +391,20 @@ def init_database() -> None:
 
     cur.executescript(SCHEMA)
 
+    # Migrate: add new columns to job_cards if missing (safe for re-runs)
+    for col_name, col_type in [
+        ("assigned_technician", "TEXT"),
+        ("actual_cost", "REAL"),
+        ("started_at", "TEXT"),
+        ("completed_at", "TEXT"),
+        ("status_history", "TEXT"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE job_cards ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+    conn.commit()
+
     # Check if already seeded
     cur.execute("SELECT COUNT(*) FROM customers")
     if cur.fetchone()[0] == 0:
@@ -398,10 +417,95 @@ def init_database() -> None:
         cur.executemany("INSERT INTO parts VALUES (?,?,?,?,?,?,?)", PARTS)
         conn.commit()
         log.info(f"Database seeded: {len(CUSTOMERS)} customers, {len(VEHICLES)} vehicles, {len(SERVICE_RECORDS)} service records")
+
+        # Seed sample job cards with various statuses
+        _seed_job_cards(cur)
+        conn.commit()
     else:
         log.info("Database already seeded")
 
     conn.close()
+
+
+def _seed_job_cards(cur: sqlite3.Cursor) -> None:
+    """Insert sample job cards at various workflow stages for testing."""
+    now = datetime.now()
+    cards = [
+        {
+            "customer_id": 1, "vehicle_id": 1,
+            "preferred_date": (date.today() + timedelta(days=3)).isoformat(),
+            "status": "in_progress",
+            "service_items": json.dumps([{"name": "Maruti ProService", "includes": ["Engine Oil Change", "Oil Filter", "Air Filter", "Brake Inspection", "AC Check"], "cost": 4999.0}]),
+            "parts": json.dumps([{"name": "Front Brake Pads (Set)", "partNumber": "MGP-FBP-001", "quantity": 1, "unitPrice": 2200.0, "totalPrice": 2200.0}]),
+            "total_estimate": 7199.0,
+            "notes": "Customer reported squeaky brakes",
+            "assigned_technician": "Ravi Patil",
+            "started_at": (now - timedelta(hours=4)).isoformat(),
+            "status_history": json.dumps([
+                {"status": "confirmed", "timestamp": (now - timedelta(days=2)).isoformat(), "notes": "Job card created via voice assistant"},
+                {"status": "received", "timestamp": (now - timedelta(days=1)).isoformat(), "notes": "Vehicle received at service center"},
+                {"status": "diagnosis", "timestamp": (now - timedelta(hours=6)).isoformat(), "notes": "Brake pads worn, confirmed replacement needed"},
+                {"status": "in_progress", "timestamp": (now - timedelta(hours=4)).isoformat(), "notes": "Service started"},
+            ]),
+        },
+        {
+            "customer_id": 2, "vehicle_id": 3,
+            "preferred_date": (date.today() + timedelta(days=1)).isoformat(),
+            "status": "confirmed",
+            "service_items": json.dumps([{"name": "Maruti EcoService", "includes": ["Engine Oil Change", "Oil Filter", "Multi-point Inspection", "Top-up Fluids"], "cost": 2499.0}]),
+            "parts": json.dumps([]),
+            "total_estimate": 2499.0,
+            "notes": "",
+            "status_history": json.dumps([
+                {"status": "confirmed", "timestamp": (now - timedelta(hours=3)).isoformat(), "notes": "Job card created via voice assistant"},
+            ]),
+        },
+        {
+            "customer_id": 3, "vehicle_id": 4,
+            "preferred_date": (date.today() - timedelta(days=5)).isoformat(),
+            "status": "completed",
+            "service_items": json.dumps([{"name": "AC Care Package", "includes": ["AC Gas Top-up", "AC Filter Cleaning", "Evaporator Cleaning", "Cabin Sanitization"], "cost": 1999.0}]),
+            "parts": json.dumps([{"name": "Cabin Filter", "partNumber": "MGP-CFLTR-001", "quantity": 1, "unitPrice": 550.0, "totalPrice": 550.0}]),
+            "total_estimate": 2549.0,
+            "actual_cost": 2549.0,
+            "notes": "AC not cooling properly",
+            "assigned_technician": "Ajay Shinde",
+            "started_at": (now - timedelta(days=4)).isoformat(),
+            "completed_at": (now - timedelta(days=3)).isoformat(),
+            "status_history": json.dumps([
+                {"status": "confirmed", "timestamp": (now - timedelta(days=6)).isoformat(), "notes": "Job card created via voice assistant"},
+                {"status": "received", "timestamp": (now - timedelta(days=5)).isoformat(), "notes": "Vehicle dropped off"},
+                {"status": "diagnosis", "timestamp": (now - timedelta(days=5, hours=-2)).isoformat(), "notes": "Low refrigerant, cabin filter clogged"},
+                {"status": "in_progress", "timestamp": (now - timedelta(days=4)).isoformat(), "notes": "AC service started"},
+                {"status": "quality_check", "timestamp": (now - timedelta(days=3, hours=4)).isoformat(), "notes": "AC cooling verified at 8°C"},
+                {"status": "ready_for_delivery", "timestamp": (now - timedelta(days=3, hours=2)).isoformat(), "notes": "Vehicle washed and ready"},
+                {"status": "completed", "timestamp": (now - timedelta(days=3)).isoformat(), "notes": "Customer picked up vehicle"},
+            ]),
+        },
+        {
+            "customer_id": 5, "vehicle_id": 6,
+            "preferred_date": (date.today()).isoformat(),
+            "status": "quality_check",
+            "service_items": json.dumps([{"name": "Maruti ProService+", "includes": ["Engine Oil Change", "Oil Filter", "Air Filter", "Cabin Filter", "Brake Inspection", "Suspension Check", "AC Service", "Full Diagnostics"], "cost": 6999.0}]),
+            "parts": json.dumps([{"name": "Air Filter", "partNumber": "MGP-AFLTR-002", "quantity": 1, "unitPrice": 850.0, "totalPrice": 850.0}]),
+            "total_estimate": 7849.0,
+            "notes": "Full service before long trip",
+            "assigned_technician": "Sunil Mane",
+            "started_at": (now - timedelta(hours=8)).isoformat(),
+            "status_history": json.dumps([
+                {"status": "confirmed", "timestamp": (now - timedelta(days=1)).isoformat(), "notes": "Job card created via voice assistant"},
+                {"status": "received", "timestamp": (now - timedelta(hours=10)).isoformat(), "notes": ""},
+                {"status": "diagnosis", "timestamp": (now - timedelta(hours=9)).isoformat(), "notes": "Air filter needs replacement"},
+                {"status": "in_progress", "timestamp": (now - timedelta(hours=8)).isoformat(), "notes": ""},
+                {"status": "quality_check", "timestamp": (now - timedelta(hours=1)).isoformat(), "notes": "All checks passing"},
+            ]),
+        },
+    ]
+    for c in cards:
+        cols = ", ".join(c.keys())
+        placeholders = ", ".join(["?"] * len(c))
+        cur.execute(f"INSERT INTO job_cards ({cols}) VALUES ({placeholders})", list(c.values()))
+    log.info(f"Seeded {len(cards)} sample job cards")
 
 
 # ---------------------------------------------------------------------------
@@ -641,11 +745,16 @@ def save_job_card(data: dict) -> int:
     """Save a confirmed job card to the database. Returns the job card ID."""
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
+    initial_history = json.dumps([{
+        "status": "confirmed",
+        "timestamp": datetime.now().isoformat(),
+        "notes": "Job card created via voice assistant",
+    }])
     cur.execute("""
         INSERT INTO job_cards
         (customer_id, vehicle_id, preferred_date, service_items, parts,
-         total_estimate, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+         total_estimate, notes, status_history)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data["customer"]["customerId"],
         data["vehicle"]["vehicleId"],
@@ -657,8 +766,145 @@ def save_job_card(data: dict) -> int:
         json.dumps(data.get("parts", [])),
         data.get("totalEstimate", 0),
         data.get("notes", ""),
+        initial_history,
     ))
     conn.commit()
     job_id = cur.lastrowid
     conn.close()
     return job_id
+
+
+# ---------------------------------------------------------------------------
+# Job card execution queries
+# ---------------------------------------------------------------------------
+
+JOB_CARD_STATUSES = [
+    "confirmed", "received", "diagnosis", "in_progress",
+    "quality_check", "ready_for_delivery", "completed",
+]
+
+
+def get_job_cards(status_filter: str | None = None) -> list[dict]:
+    """Get all job cards with customer/vehicle info joined."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    sql = """
+        SELECT jc.*, c.name as customer_name, c.phone as customer_phone,
+               v.model as vehicle_model, v.variant as vehicle_variant,
+               v.registration_no, v.current_mileage as mileage
+        FROM job_cards jc
+        JOIN customers c ON jc.customer_id = c.id
+        JOIN vehicles v ON jc.vehicle_id = v.id
+    """
+    params: list = []
+    if status_filter and status_filter in JOB_CARD_STATUSES:
+        sql += " WHERE jc.status = ?"
+        params.append(status_filter)
+    sql += " ORDER BY jc.created_at DESC"
+
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+    result = []
+    for row in rows:
+        card = dict(row)
+        card["service_items"] = json.loads(card["service_items"]) if card["service_items"] else []
+        card["parts"] = json.loads(card["parts"]) if card["parts"] else []
+        card["status_history"] = json.loads(card["status_history"]) if card.get("status_history") else []
+        result.append(card)
+    conn.close()
+    return result
+
+
+def get_job_card_by_id(job_id: int) -> dict | None:
+    """Get a single job card with full customer/vehicle detail."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT jc.*, c.name as customer_name, c.phone as customer_phone,
+               c.email as customer_email,
+               v.model as vehicle_model, v.variant as vehicle_variant,
+               v.registration_no, v.current_mileage as mileage,
+               v.fuel_type, v.year, v.color
+        FROM job_cards jc
+        JOIN customers c ON jc.customer_id = c.id
+        JOIN vehicles v ON jc.vehicle_id = v.id
+        WHERE jc.id = ?
+    """, (job_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        return None
+
+    card = dict(row)
+    card["service_items"] = json.loads(card["service_items"]) if card["service_items"] else []
+    card["parts"] = json.loads(card["parts"]) if card["parts"] else []
+    card["status_history"] = json.loads(card["status_history"]) if card.get("status_history") else []
+    return card
+
+
+def advance_job_card_status(job_id: int, new_status: str, notes: str = "") -> dict:
+    """Advance job card to a new status (forward-only). Records in status_history."""
+    if new_status not in JOB_CARD_STATUSES:
+        return {"success": False, "message": f"Invalid status: {new_status}"}
+
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    cur.execute("SELECT status, status_history FROM job_cards WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return {"success": False, "message": "Job card not found"}
+
+    current_status = row["status"]
+    current_idx = JOB_CARD_STATUSES.index(current_status) if current_status in JOB_CARD_STATUSES else -1
+    new_idx = JOB_CARD_STATUSES.index(new_status)
+
+    if new_idx <= current_idx:
+        conn.close()
+        return {"success": False, "message": f"Cannot move from '{current_status}' to '{new_status}'"}
+
+    history = json.loads(row["status_history"]) if row["status_history"] else []
+    history.append({
+        "status": new_status,
+        "timestamp": datetime.now().isoformat(),
+        "notes": notes,
+    })
+
+    updates: dict = {"status": new_status, "status_history": json.dumps(history)}
+    if new_status in ("received", "in_progress") and not row.get("started_at"):
+        updates["started_at"] = datetime.now().isoformat()
+    if new_status == "completed":
+        updates["completed_at"] = datetime.now().isoformat()
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [job_id]
+    cur.execute(f"UPDATE job_cards SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+
+    return {"success": True, "status": new_status}
+
+
+def update_job_card_fields(job_id: int, fields: dict) -> dict:
+    """Update specific mutable fields on a job card."""
+    allowed = {"assigned_technician", "actual_cost", "notes"}
+    filtered = {k: v for k, v in fields.items() if k in allowed}
+
+    if not filtered:
+        return {"success": False, "message": "No valid fields to update"}
+
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.cursor()
+    set_clause = ", ".join(f"{k} = ?" for k in filtered)
+    values = list(filtered.values()) + [job_id]
+    cur.execute(f"UPDATE job_cards SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+    return {"success": True}
