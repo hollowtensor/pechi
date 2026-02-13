@@ -1,12 +1,49 @@
 export type AppState = "idle" | "connected" | "listening" | "transcribing" | "thinking" | "result";
 
+// ---------------------------------------------------------------------------
+// Media analysis types
+// ---------------------------------------------------------------------------
+
+export interface MediaAnalysis {
+  id: number;
+  customer_id: number | null;
+  vehicle_id: number | null;
+  file_path: string;
+  file_name: string;
+  customer_note: string | null;
+  analysis: string;
+  tags: string[];
+  created_at: string;
+}
+
+export interface UploadMediaResponse {
+  success: boolean;
+  mediaId?: number;
+  fileName?: string;
+  analysis?: string;
+  tags?: string[];
+  message?: string;
+}
+
 export type MessageRole = "user" | "agent";
 
+export type ImageAnalysisStatus = 'uploading' | 'analyzing' | 'done' | 'error';
+
+export interface ChatImage {
+  uri: string;
+  mediaId?: number;
+  status: ImageAnalysisStatus;
+  analysis?: string;
+  tags?: string[];
+}
+
 export interface ChatMessage {
+  id: string;
   role: MessageRole;
   text: string;
   time: string;
   panelId?: string;
+  image?: ChatImage;
 }
 
 export interface JobCard {
@@ -196,6 +233,7 @@ export interface JobCardListItem {
   }>;
   status_history: StatusHistoryEntry[];
   checklist: ChecklistItem[];
+  advisor_remarks: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;

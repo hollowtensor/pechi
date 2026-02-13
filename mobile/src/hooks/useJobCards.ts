@@ -4,6 +4,7 @@ import {
   fetchJobCards,
   fetchJobCardDetail,
   updateJobCardStatus,
+  updateJobCardFields,
   toggleChecklistItem,
 } from '../services/api';
 
@@ -63,6 +64,17 @@ export function useJobCards() {
     [],
   );
 
+  const saveRemarks = useCallback(
+    async (id: number, remarks: string) => {
+      const res = await updateJobCardFields(id, { advisor_remarks: remarks });
+      if (res.success) {
+        setSelectedCard((prev) => (prev ? { ...prev, advisor_remarks: remarks } : prev));
+      }
+      return res;
+    },
+    [],
+  );
+
   return {
     jobCards,
     loading,
@@ -74,5 +86,6 @@ export function useJobCards() {
     loadDetail,
     advanceStatus,
     toggleChecklist,
+    saveRemarks,
   };
 }

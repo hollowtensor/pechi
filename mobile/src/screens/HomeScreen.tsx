@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
@@ -14,6 +15,7 @@ import { JobCardModal } from '../components/JobCardModal';
 import { GreetingOverlay } from '../components/GreetingOverlay';
 import { useAppState } from '../hooks/useAppState';
 import { useLiveKit } from '../hooks/useLiveKit';
+import { uploadMedia, reanalyzeMedia } from '../services/api';
 import type { SidePanelItem, JobCard } from '../types';
 import { spacing } from '../constants/theme';
 
@@ -22,15 +24,23 @@ export function AssistantScreen() {
   const { colors } = useTheme();
   const navigation = useNavigation<any>();
   const state = useAppState();
-  const { connect, disconnect, publishJobCard, publishTextMessage } = useLiveKit({
+  const { connect, disconnect, toggleMic, publishJobCard, publishTextMessage, publishImageFeedback, clearImageFeedback, publishImageContext } = useLiveKit({
     language: state.language,
     setConnected: state.setConnected,
     setConnecting: state.setConnecting,
     setStatus: state.setStatus,
     setAppState: state.setAppState,
+    setMicActive: state.setMicActive,
     handleDataMessage: state.handleDataMessage,
     resultTimerRef: state.resultTimerRef,
   });
+
+  // Auto-connect to LiveKit when screen mounts (no mic yet)
+  useEffect(() => {
+    connect();
+    return () => { disconnect(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Greeting overlay
   const [showGreeting, setShowGreeting] = useState(true);
@@ -38,6 +48,146 @@ export function AssistantScreen() {
   // Job card modal state
   const [jobCardModalVisible, setJobCardModalVisible] = useState(false);
   const [activeJobCardPanel, setActiveJobCardPanel] = useState<SidePanelItem | null>(null);
+
+  // -----------------------------------------------------------------------
+  // Image upload flow
+  // -----------------------------------------------------------------------
+
+  const pickAndUploadImage = useCallback(async (source: 'camera' | 'gallery') => {
+    // Request permissions
+    if (source === 'camera') {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Camera access is required to take photos.');
+        return;
+      }
+    } else {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Photo library access is required.');
+        return;
+      }
+    }
+
+    const result = source === 'camera'
+      ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    const uri = asset.uri;
+    const fileName = asset.fileName || 'photo.jpg';
+    const mimeType = asset.mimeType || 'image/jpeg';
+
+    // Add image to chat immediately (uploading state)
+    const msgId = state.addImageMessage(uri);
+
+    // Upload + first VLM analysis (no feedback)
+    state.updateImageMessage(msgId, { status: 'analyzing' });
+    try {
+      const resp = await uploadMedia(uri, fileName, mimeType);
+      if (resp.success) {
+        state.updateImageMessage(msgId, {
+          status: 'done',
+          mediaId: resp.mediaId,
+          analysis: resp.analysis,
+          tags: resp.tags,
+        });
+        // Send VLM analysis to bot so LLM agent has image context
+        if (resp.mediaId && resp.analysis) {
+          publishImageContext(resp.mediaId, resp.analysis, resp.tags || []);
+        }
+      } else {
+        state.updateImageMessage(msgId, { status: 'error' });
+      }
+    } catch {
+      state.updateImageMessage(msgId, { status: 'error' });
+    }
+  }, [state, publishImageContext]);
+
+  const handleAttachImage = useCallback(() => {
+    Alert.alert('Upload Image', 'Choose a source', [
+      { text: 'Camera', onPress: () => pickAndUploadImage('camera') },
+      { text: 'Gallery', onPress: () => pickAndUploadImage('gallery') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [pickAndUploadImage]);
+
+  // Reply to image → set reply mode + signal bot
+  const handleReply = useCallback((messageId: string) => {
+    state.setReplyToImageId(messageId);
+    // Tell the bot that the next voice message is image feedback
+    const imgMsg = state.getImageMessage(messageId);
+    const mediaId = imgMsg?.image?.mediaId;
+    if (mediaId) {
+      publishImageFeedback(mediaId);
+    }
+  }, [state, publishImageFeedback]);
+
+  const handleCancelReply = useCallback(() => {
+    state.setReplyToImageId(null);
+    // Tell the bot to exit image feedback mode
+    clearImageFeedback();
+  }, [state, clearImageFeedback]);
+
+  // Get the image being replied to (for reply bar thumbnail)
+  const replyToImageMsg = state.replyToImageId
+    ? state.getImageMessage(state.replyToImageId)
+    : null;
+  const replyToImage = replyToImageMsg?.image
+    ? { uri: replyToImageMsg.image.uri }
+    : null;
+
+  // -----------------------------------------------------------------------
+  // Send text/voice — handles reply-to-image feedback
+  // -----------------------------------------------------------------------
+
+  const handleSendText = useCallback(
+    async (text: string) => {
+      state.addUserMessage(text);
+
+      if (state.replyToImageId) {
+        // This is typed feedback for an image — reanalyze via REST API
+        const imgMsg = state.getImageMessage(state.replyToImageId);
+        const mediaId = imgMsg?.image?.mediaId;
+        state.setReplyToImageId(null);
+        clearImageFeedback();
+
+        if (mediaId) {
+          state.updateImageMessage(imgMsg!.id, { status: 'analyzing' });
+          try {
+            const resp = await reanalyzeMedia(mediaId, text);
+            if (resp.success) {
+              state.updateImageMessage(imgMsg!.id, {
+                status: 'done',
+                analysis: resp.analysis,
+                tags: resp.tags,
+              });
+              // Send enriched context to LLM agent via bot
+              const summary = `The customer uploaded an image and said: "${text}"\nImage analysis: ${resp.analysis}`;
+              publishTextMessage(summary);
+            } else {
+              state.updateImageMessage(imgMsg!.id, { status: 'done' });
+              publishTextMessage(text);
+            }
+          } catch {
+            state.updateImageMessage(imgMsg!.id, { status: 'done' });
+            publishTextMessage(text);
+          }
+        } else {
+          publishTextMessage(text);
+        }
+      } else {
+        publishTextMessage(text);
+      }
+    },
+    [state, publishTextMessage, clearImageFeedback],
+  );
+
+  // -----------------------------------------------------------------------
+  // Job card handlers
+  // -----------------------------------------------------------------------
 
   const handleOpenJobCard = useCallback((panel: SidePanelItem) => {
     setActiveJobCardPanel(panel);
@@ -76,20 +226,9 @@ export function AssistantScreen() {
   );
 
   const handleMicPress = useCallback(() => {
-    if (state.connected) {
-      disconnect();
-    } else {
-      connect();
-    }
-  }, [state.connected, connect, disconnect]);
-
-  const handleSendText = useCallback(
-    (text: string) => {
-      state.addUserMessage(text);
-      publishTextMessage(text);
-    },
-    [state.addUserMessage, publishTextMessage],
-  );
+    if (!state.connected) return; // room not ready yet
+    toggleMic();
+  }, [state.connected, toggleMic]);
 
   const activeJobCard =
     activeJobCardPanel?.content.type === 'job_card'
@@ -110,7 +249,7 @@ export function AssistantScreen() {
           <LanguageToggle
             language={state.language}
             onSelect={state.setLanguage}
-            disabled={state.connected}
+            disabled={state.micActive}
           />
         </View>
         <Image
@@ -134,17 +273,23 @@ export function AssistantScreen() {
         messages={state.messages}
         appState={state.appState}
         connected={state.connected}
+        replyToImageId={state.replyToImageId}
         onPanelPress={state.openPanelById}
+        onReply={handleReply}
       />
 
       {/* Input Dock */}
       <InputDock
         connected={state.connected}
         connecting={state.connecting}
+        micActive={state.micActive}
         status={state.status}
         appState={state.appState}
         onMicPress={handleMicPress}
         onSendText={handleSendText}
+        onAttachImage={handleAttachImage}
+        replyToImage={replyToImage}
+        onCancelReply={handleCancelReply}
       />
 
       {/* Side panels as bottom sheet */}

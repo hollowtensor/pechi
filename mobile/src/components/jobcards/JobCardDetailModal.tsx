@@ -14,6 +14,7 @@ import type { JobCardListItem, JobCardStatus } from '../../types';
 import { StatusStepper } from './StatusStepper';
 import { StatusTimeline } from './StatusTimeline';
 import { ServiceChecklist } from './ServiceChecklist';
+import { AdvisorRemarks } from './AdvisorRemarks';
 import { spacing, borderRadius } from '../../constants/theme';
 
 interface Props {
@@ -21,10 +22,11 @@ interface Props {
   isAdvisor: boolean;
   onAdvanceStatus: (id: number, status: JobCardStatus) => void;
   onToggleChecklist: (id: number, key: string, checked: boolean) => void;
+  onSaveRemarks: (id: number, text: string) => void;
   onClose: () => void;
 }
 
-export function JobCardDetailModal({ card, isAdvisor, onAdvanceStatus, onToggleChecklist, onClose }: Props) {
+export function JobCardDetailModal({ card, isAdvisor, onAdvanceStatus, onToggleChecklist, onSaveRemarks, onClose }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -162,6 +164,13 @@ export function JobCardDetailModal({ card, isAdvisor, onAdvanceStatus, onToggleC
               <Text style={[styles.notesText, { color: colors.textSecondary }]}>{card.notes}</Text>
             </View>
           ) : null}
+
+          {/* Advisor Remarks */}
+          <AdvisorRemarks
+            remarks={card.advisor_remarks}
+            isAdvisor={isAdvisor}
+            onSave={(text) => onSaveRemarks(card.id, text)}
+          />
 
           {/* Timeline */}
           <StatusTimeline history={card.status_history || []} />

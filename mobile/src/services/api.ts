@@ -12,11 +12,14 @@ export interface LoginResponse {
   message?: string;
 }
 
-export async function loginApi(language: 'en' | 'hi'): Promise<LoginResponse> {
+export async function loginApi(
+  language: 'en' | 'hi',
+  mode: 'full' | 'transcribe_only' = 'full',
+): Promise<LoginResponse> {
   const resp = await fetch(`${API_BASE}/api/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 'mobile_user', language }),
+    body: JSON.stringify({ userId: 'mobile_user', language, mode }),
   });
   return resp.json();
 }
@@ -48,7 +51,7 @@ export function resolveUrl(url: string): string {
 // Job card execution API
 // ---------------------------------------------------------------------------
 
-import type { JobCardListItem, JobCardStatus, ChecklistItem } from '../types';
+import type { JobCardListItem, JobCardStatus, ChecklistItem, MediaAnalysis, UploadMediaResponse } from '../types';
 
 export async function fetchJobCards(
   status?: string,
@@ -80,7 +83,7 @@ export async function updateJobCardStatus(
 
 export async function updateJobCardFields(
   id: number,
-  fields: { assigned_technician?: string; actual_cost?: number; notes?: string },
+  fields: { assigned_technician?: string; actual_cost?: number; notes?: string; advisor_remarks?: string },
 ): Promise<{ success: boolean; message?: string }> {
   const resp = await fetch(`${API_BASE}/api/job-cards/${id}`, {
     method: 'PATCH',
@@ -100,5 +103,53 @@ export async function toggleChecklistItem(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key, checked }),
   });
+  return resp.json();
+}
+
+// ---------------------------------------------------------------------------
+// Media upload + VLM analysis
+// ---------------------------------------------------------------------------
+
+export async function uploadMedia(
+  imageUri: string,
+  fileName: string,
+  mimeType: string,
+  opts?: { customerId?: number; vehicleId?: number; context?: string },
+): Promise<UploadMediaResponse> {
+  const form = new FormData();
+  form.append('file', {
+    uri: imageUri,
+    name: fileName,
+    type: mimeType,
+  } as any);
+  if (opts?.customerId != null) form.append('customer_id', String(opts.customerId));
+  if (opts?.vehicleId != null) form.append('vehicle_id', String(opts.vehicleId));
+  if (opts?.context) form.append('context', opts.context);
+
+  const resp = await fetch(`${API_BASE}/api/upload-media`, {
+    method: 'POST',
+    body: form,
+  });
+  return resp.json();
+}
+
+export async function reanalyzeMedia(
+  mediaId: number,
+  context: string,
+): Promise<UploadMediaResponse> {
+  const resp = await fetch(`${API_BASE}/api/media/${mediaId}/reanalyze`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ context }),
+  });
+  return resp.json();
+}
+
+export async function fetchMediaAnalyses(
+  customerId: number,
+  vehicleId?: number,
+): Promise<{ success: boolean; analyses: MediaAnalysis[] }> {
+  const qs = vehicleId != null ? `?vehicle_id=${vehicleId}` : '';
+  const resp = await fetch(`${API_BASE}/api/media/${customerId}${qs}`);
   return resp.json();
 }

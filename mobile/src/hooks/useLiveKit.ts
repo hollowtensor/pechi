@@ -9,6 +9,7 @@ interface UseLiveKitParams {
   setConnecting: (v: boolean) => void;
   setStatus: (v: string) => void;
   setAppState: (v: AppState) => void;
+  setMicActive: (v: boolean) => void;
   handleDataMessage: (msg: unknown) => void;
   resultTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | undefined>;
 }
@@ -19,13 +20,16 @@ export function useLiveKit({
   setConnecting,
   setStatus,
   setAppState,
+  setMicActive,
   handleDataMessage,
   resultTimerRef,
 }: UseLiveKitParams) {
   const roomRef = useRef<Room | null>(null);
   const userIdRef = useRef<string | null>(null);
 
+  // Connect to LiveKit room (no mic yet)
   const connect = useCallback(async () => {
+    if (roomRef.current) return; // already connected
     setConnecting(true);
     setStatus('Connecting...');
     try {
@@ -60,25 +64,42 @@ export function useLiveKit({
 
       room.on(RoomEvent.Disconnected, () => {
         setConnected(false);
+        setMicActive(false);
         setAppState('idle');
         setStatus('Disconnected');
       });
 
       const livekitUrl = resolveUrl(data.livekitUrl);
       await room.connect(livekitUrl, data.token);
-      await room.localParticipant.setMicrophoneEnabled(true);
 
       setConnected(true);
       setConnecting(false);
       setAppState('connected');
-      setStatus('Speak now');
+      setStatus('Ready');
     } catch (err) {
       setStatus(`Connection failed: ${(err as Error).message}`);
       setConnecting(false);
       setAppState('idle');
     }
-  }, [language, setConnected, setConnecting, setStatus, setAppState, handleDataMessage]);
+  }, [language, setConnected, setConnecting, setStatus, setAppState, setMicActive, handleDataMessage]);
 
+  // Toggle microphone on/off
+  const toggleMic = useCallback(async () => {
+    if (!roomRef.current) return;
+    const participant = roomRef.current.localParticipant;
+    const micOn = participant.isMicrophoneEnabled;
+    await participant.setMicrophoneEnabled(!micOn);
+    setMicActive(!micOn);
+    if (!micOn) {
+      setAppState('connected');
+      setStatus('Speak now');
+    } else {
+      setAppState('connected');
+      setStatus('Ready');
+    }
+  }, [setMicActive, setAppState, setStatus]);
+
+  // Full disconnect + cleanup
   const disconnect = useCallback(async () => {
     clearTimeout(resultTimerRef.current);
     if (roomRef.current) {
@@ -94,9 +115,10 @@ export function useLiveKit({
       userIdRef.current = null;
     }
     setConnected(false);
+    setMicActive(false);
     setAppState('idle');
-    setStatus('Stopped');
-  }, [setConnected, setAppState, setStatus, resultTimerRef]);
+    setStatus('Disconnected');
+  }, [setConnected, setMicActive, setAppState, setStatus, resultTimerRef]);
 
   const publishJobCard = useCallback((jobCard: JobCard) => {
     if (!roomRef.current) return;
@@ -118,5 +140,35 @@ export function useLiveKit({
     );
   }, []);
 
-  return { connect, disconnect, publishJobCard, publishTextMessage };
+  const publishImageFeedback = useCallback((mediaId: number) => {
+    if (!roomRef.current) return;
+    roomRef.current.localParticipant.publishData(
+      new TextEncoder().encode(
+        JSON.stringify({ type: 'set_image_feedback', mediaId }),
+      ),
+      { reliable: true, topic: 'user_action' },
+    );
+  }, []);
+
+  const clearImageFeedback = useCallback(() => {
+    if (!roomRef.current) return;
+    roomRef.current.localParticipant.publishData(
+      new TextEncoder().encode(
+        JSON.stringify({ type: 'clear_image_feedback' }),
+      ),
+      { reliable: true, topic: 'user_action' },
+    );
+  }, []);
+
+  const publishImageContext = useCallback((mediaId: number, analysis: string, tags: string[]) => {
+    if (!roomRef.current) return;
+    roomRef.current.localParticipant.publishData(
+      new TextEncoder().encode(
+        JSON.stringify({ type: 'image_context', mediaId, analysis, tags }),
+      ),
+      { reliable: true, topic: 'user_action' },
+    );
+  }, []);
+
+  return { connect, disconnect, toggleMic, publishJobCard, publishTextMessage, publishImageFeedback, clearImageFeedback, publishImageContext };
 }

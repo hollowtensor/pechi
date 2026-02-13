@@ -1,9 +1,15 @@
 import { useState, useCallback, useRef } from 'react';
-import type { AppState, ChatMessage, JobCard, SidePanelItem } from '../types';
+import type { AppState, ChatMessage, ChatImage, JobCard, SidePanelItem } from '../types';
+
+let msgCounter = 0;
+function nextId(): string {
+  return `msg-${Date.now()}-${++msgCounter}`;
+}
 
 export function useAppState() {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [micActive, setMicActive] = useState(false);
   const [status, setStatus] = useState('Ready');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [appState, setAppState] = useState<AppState>('idle');
@@ -13,6 +19,8 @@ export function useAppState() {
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Panel IDs waiting to be tagged onto the next agent message
   const pendingPanelIdsRef = useRef<string[]>([]);
+  // Image reply state: when set, next user message is feedback for this image message
+  const [replyToImageId, setReplyToImageId] = useState<string | null>(null);
 
   const addSidePanel = useCallback(
     (msg: { panelType: string; title: string; data: unknown; isActionable?: boolean }) => {
@@ -32,7 +40,6 @@ export function useAppState() {
         };
         return [...collapsed, newPanel];
       });
-      // Queue this panel ID — it will be attached to the next agent message
       pendingPanelIdsRef.current.push(panelId);
       setShowSheet(true);
     },
@@ -69,7 +76,7 @@ export function useAppState() {
       if (msg.type === 'user_message') {
         setMessages((prev) => [
           ...prev,
-          { role: 'user', text: msg.text, time: new Date().toLocaleTimeString() },
+          { id: nextId(), role: 'user', text: msg.text, time: new Date().toLocaleTimeString() },
         ]);
         setAppState('transcribing');
       } else if (msg.type === 'agent_message') {
@@ -79,7 +86,7 @@ export function useAppState() {
         pendingPanelIdsRef.current = [];
         setMessages((prev) => [
           ...prev,
-          { role: 'agent', text: msg.text, time: new Date().toLocaleTimeString(), panelId: pendingId },
+          { id: nextId(), role: 'agent', text: msg.text, time: new Date().toLocaleTimeString(), panelId: pendingId },
         ]);
         setAppState('result');
         clearTimeout(resultTimerRef.current);
@@ -102,6 +109,25 @@ export function useAppState() {
         addSidePanel(msg);
       } else if (msg.type === 'job_card_confirmed') {
         setSidePanels((prev) => prev.filter((p) => p.panelType !== 'job_card'));
+      } else if (msg.type === 'image_analysis_updated') {
+        // Bot reanalyzed image with voice feedback — update the chat bubble
+        const mediaId = msg.mediaId;
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.image && m.image.mediaId === mediaId) {
+              return {
+                ...m,
+                image: {
+                  ...m.image,
+                  status: 'done' as const,
+                  analysis: msg.analysis as string,
+                  tags: msg.tags as string[],
+                },
+              };
+            }
+            return m;
+          }),
+        );
       }
     },
     [addSidePanel],
@@ -110,9 +136,50 @@ export function useAppState() {
   const addUserMessage = useCallback((text: string) => {
     setMessages((prev) => [
       ...prev,
-      { role: 'user', text, time: new Date().toLocaleTimeString() },
+      { id: nextId(), role: 'user', text, time: new Date().toLocaleTimeString() },
     ]);
   }, []);
+
+  // -----------------------------------------------------------------------
+  // Image message helpers
+  // -----------------------------------------------------------------------
+
+  const addImageMessage = useCallback((imageUri: string): string => {
+    const id = nextId();
+    setMessages((prev) => [
+      ...prev,
+      {
+        id,
+        role: 'user',
+        text: '',
+        time: new Date().toLocaleTimeString(),
+        image: {
+          uri: imageUri,
+          status: 'uploading',
+        },
+      },
+    ]);
+    return id;
+  }, []);
+
+  const updateImageMessage = useCallback((messageId: string, updates: Partial<ChatImage>) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId && m.image
+          ? { ...m, image: { ...m.image, ...updates } }
+          : m,
+      ),
+    );
+  }, []);
+
+  const getImageMessage = useCallback(
+    (messageId: string): ChatMessage | undefined => {
+      return messages.find((m) => m.id === messageId);
+    },
+    [messages],
+  );
+
+  // -----------------------------------------------------------------------
 
   const openPanelById = useCallback((panelId: string) => {
     setSidePanels((prev) =>
@@ -125,6 +192,7 @@ export function useAppState() {
     setMessages([]);
     setSidePanels([]);
     setShowSheet(false);
+    setReplyToImageId(null);
   }, []);
 
   return {
@@ -132,6 +200,8 @@ export function useAppState() {
     setConnected,
     connecting,
     setConnecting,
+    micActive,
+    setMicActive,
     status,
     setStatus,
     messages,
@@ -148,6 +218,11 @@ export function useAppState() {
     handleDismissPanel,
     openPanelById,
     addUserMessage,
+    addImageMessage,
+    updateImageMessage,
+    getImageMessage,
+    replyToImageId,
+    setReplyToImageId,
     handleCancelJobCard,
     handleUpdateJobCard,
     handleClear,

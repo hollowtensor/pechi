@@ -41,6 +41,20 @@ LM_STUDIO_URL = os.getenv("LM_STUDIO_URL", "http://localhost:1234/v1")
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen/qwen3-4b-2507")
 
 # ---------------------------------------------------------------------------
+# VLM (Vision Language Model)
+# ---------------------------------------------------------------------------
+
+VLM_URL = os.getenv("VLM_URL", LM_STUDIO_URL)  # defaults to same LM Studio instance
+VLM_MODEL = os.getenv("VLM_MODEL", "qwen/qwen3-vl-4b")
+
+# ---------------------------------------------------------------------------
+# Media uploads
+# ---------------------------------------------------------------------------
+
+UPLOAD_DIR = DATA_DIR / "uploads"
+MAX_IMAGE_SIZE = 1024  # max dimension in pixels for VLM input
+
+# ---------------------------------------------------------------------------
 # Redis
 # ---------------------------------------------------------------------------
 

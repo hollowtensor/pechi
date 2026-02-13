@@ -30,9 +30,10 @@ from .config import (
     VLLM_URL,
     WEBRTC_SAMPLE_RATE,
 )
-from .database import save_job_card
+from .database import save_job_card, get_media_analysis_by_id, update_media_analysis
 from .llm_agent import LLMAgent
 from .text_normalizer import normalize_asr_text
+from . import vlm_agent as vlm
 
 log = logging.getLogger("asr_bot")
 
@@ -92,16 +93,18 @@ def compute_rms(audio: np.ndarray) -> float:
 
 
 class ASRBot:
-    def __init__(self, room_name: str, user_id: str, language: str = "en"):
+    def __init__(self, room_name: str, user_id: str, language: str = "en", mode: str = "full"):
         self.room_name = room_name
         self.user_id = user_id
         self.language = language
+        self.mode = mode  # "full" or "transcribe_only"
         self.room = rtc.Room()
         self.stop_event = asyncio.Event()
         self.generating = False
         self.http = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
-        self.llm = LLMAgent(user_id, send_data_callback=self._send_data)
+        self.llm = LLMAgent(user_id, send_data_callback=self._send_data) if mode == "full" else None
         self._tasks: list[asyncio.Task] = []
+        self._pending_image_feedback: int | None = None  # media_id when in feedback mode
 
     async def start(self):
         token = (
@@ -133,10 +136,13 @@ class ASRBot:
             log.error(f"vLLM not reachable: {e}")
             raise
 
-        # Restore LLM session from Redis if available
-        restored = await self.llm.load_from_redis()
-        if restored:
-            await self._send_data({"type": "status", "text": "Welcome back — session restored"})
+        if self.mode == "full" and self.llm:
+            # Restore LLM session from Redis if available
+            restored = await self.llm.load_from_redis()
+            if restored:
+                await self._send_data({"type": "status", "text": "Welcome back — session restored"})
+            else:
+                await self._send_data({"type": "status", "text": "Ready — start speaking"})
         else:
             await self._send_data({"type": "status", "text": "Ready — start speaking"})
 
@@ -159,15 +165,56 @@ class ASRBot:
             self._tasks.append(task)
 
     def _on_data_received(self, packet: rtc.DataPacket):
-        """Handle incoming data from user (e.g., job card confirmations)."""
+        """Handle incoming data from user."""
         if packet.topic != "user_action":
             return
         try:
             msg = json.loads(packet.data.decode())
-            if msg.get("type") == "confirm_job_card":
+            msg_type = msg.get("type")
+
+            if msg_type == "confirm_job_card":
                 asyncio.create_task(self._handle_job_card_confirmation(msg["data"]))
+
+            elif msg_type == "user_text":
+                # Typed text message → process via LLM
+                text = msg.get("text", "").strip()
+                if text and self.llm:
+                    asyncio.create_task(self._process_user_text(text))
+
+            elif msg_type == "image_context":
+                # First VLM analysis result — inject into LLM agent context
+                analysis = msg.get("analysis", "")
+                tags = msg.get("tags", [])
+                media_id = msg.get("mediaId")
+                if analysis and self.llm:
+                    self.llm.inject_media_context(analysis, tags)
+                    log.info(f"Injected image context from media #{media_id}: {len(analysis)} chars")
+
+            elif msg_type == "set_image_feedback":
+                media_id = msg.get("mediaId")
+                if media_id:
+                    self._pending_image_feedback = int(media_id)
+                    log.info(f"Image feedback mode ON for media #{media_id}")
+
+            elif msg_type == "clear_image_feedback":
+                self._pending_image_feedback = None
+                log.info("Image feedback mode OFF")
+
         except Exception as e:
             log.error(f"Data receive error: {e}")
+
+    async def _process_user_text(self, text: str):
+        """Process a typed text message through the LLM agent."""
+        await self._send_data({"type": "user_message", "text": text})
+        await self._send_data({"type": "thinking"})
+        try:
+            response = await self.llm.chat(text)
+            log.info(f"Agent response (text): {response[:100]}...")
+            await self._send_data({"type": "agent_message", "text": response})
+        except Exception as e:
+            log.error(f"LLM error on text: {e}", exc_info=True)
+            await self._send_data({"type": "error", "text": str(e)})
+        await self._send_data({"type": "status", "text": "Ready — start speaking"})
 
     async def _handle_job_card_confirmation(self, data: dict):
         """Save confirmed job card to database."""
@@ -309,15 +356,27 @@ class ASRBot:
                     normalized = normalize_asr_text(text)
                     if normalized != text:
                         log.info(f"Normalized: {normalized}")
-                    # Send user's speech as a message
-                    await self._send_data({"type": "user_message", "text": normalized})
 
-                    # Now pass to LLM agent
-                    await self._send_data({"type": "thinking"})
-                    log.info("Sending to LLM agent...")
-                    agent_response = await self.llm.chat(normalized)
-                    log.info(f"Agent response: {agent_response[:100]}...")
-                    await self._send_data({"type": "agent_message", "text": agent_response})
+                    if self.mode == "transcribe_only":
+                        # Just send the transcription result, no LLM
+                        await self._send_data({"type": "transcription_result", "text": normalized})
+                    elif self._pending_image_feedback is not None:
+                        # Voice feedback for an image — reanalyze then send to LLM
+                        media_id = self._pending_image_feedback
+                        self._pending_image_feedback = None
+                        await self._send_data({"type": "user_message", "text": normalized})
+                        await self._send_data({"type": "thinking"})
+                        await self._handle_image_feedback(media_id, normalized)
+                    else:
+                        # Send user's speech as a message
+                        await self._send_data({"type": "user_message", "text": normalized})
+
+                        # Now pass to LLM agent
+                        await self._send_data({"type": "thinking"})
+                        log.info("Sending to LLM agent...")
+                        agent_response = await self.llm.chat(normalized)
+                        log.info(f"Agent response: {agent_response[:100]}...")
+                        await self._send_data({"type": "agent_message", "text": agent_response})
                 else:
                     log.info("Empty transcription")
                     await self._send_data({"type": "status", "text": "No speech detected"})
@@ -333,6 +392,68 @@ class ASRBot:
         finally:
             self.generating = False
 
+    async def _handle_image_feedback(self, media_id: int, feedback_text: str):
+        """Reanalyze image with voice feedback, then send enriched context to LLM."""
+        try:
+            from pathlib import Path
+
+            record = get_media_analysis_by_id(media_id)
+            if not record:
+                log.warning(f"Media #{media_id} not found for feedback")
+                agent_response = await self.llm.chat(feedback_text)
+                await self._send_data({"type": "agent_message", "text": agent_response})
+                return
+
+            image_path = Path(record["file_path"])
+            if not image_path.exists():
+                log.warning(f"Image file missing for media #{media_id}")
+                agent_response = await self.llm.chat(feedback_text)
+                await self._send_data({"type": "agent_message", "text": agent_response})
+                return
+
+            # Re-analyze with customer feedback
+            log.info(f"Reanalyzing media #{media_id} with feedback: {feedback_text[:80]}")
+            result = await vlm.analyze_image(image_path, context=feedback_text)
+
+            # Update DB
+            update_media_analysis(
+                media_id,
+                analysis=result["analysis"],
+                tags=result["tags"],
+                customer_note=feedback_text,
+            )
+
+            # Notify frontend of updated analysis
+            tags_str = ", ".join(result["tags"]) if result["tags"] else ""
+            await self._send_data({
+                "type": "image_analysis_updated",
+                "mediaId": media_id,
+                "analysis": result["analysis"],
+                "tags": result["tags"],
+            })
+
+            # Update LLM agent's media context with the new analysis
+            self.llm.inject_media_context(result["analysis"], result["tags"])
+
+            # Send enriched context to LLM as conversation message
+            llm_message = (
+                f"The customer uploaded an image and said: \"{feedback_text}\"\n"
+                f"Updated image analysis: {result['analysis']}"
+            )
+            if tags_str:
+                llm_message += f"\nTags: {tags_str}"
+
+            log.info("Sending image feedback to LLM agent...")
+            agent_response = await self.llm.chat(llm_message)
+            log.info(f"Agent response (image feedback): {agent_response[:100]}...")
+            await self._send_data({"type": "agent_message", "text": agent_response})
+
+        except Exception as e:
+            log.error(f"Image feedback error: {e}", exc_info=True)
+            # Fallback: send raw text to LLM
+            agent_response = await self.llm.chat(feedback_text)
+            await self._send_data({"type": "agent_message", "text": agent_response})
+
     async def stop(self):
         log.info("Stopping bot...")
         self.stop_event.set()
@@ -340,5 +461,6 @@ class ASRBot:
             task.cancel()
         await self.room.disconnect()
         await self.http.aclose()
-        await self.llm.close()
+        if self.llm:
+            await self.llm.close()
         log.info("Bot stopped")

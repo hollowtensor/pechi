@@ -6,20 +6,23 @@ FastAPI application entry point.
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from livekit import api
 from pydantic import BaseModel
 
 from .asr_bot import ASRBot
+from . import vlm_agent
 from .config import (
     ASR_LANGUAGES,
     LIVEKIT_API_KEY,
     LIVEKIT_API_SECRET,
     LIVEKIT_URL,
+    UPLOAD_DIR,
     VLLM_URL,
 )
 from .database import (
@@ -29,6 +32,10 @@ from .database import (
     advance_job_card_status,
     update_job_card_fields,
     update_checklist_item,
+    get_media_analyses,
+    get_media_analysis_by_id,
+    save_media_analysis,
+    update_media_analysis,
     JOB_CARD_STATUSES,
 )
 
@@ -47,6 +54,7 @@ log = logging.getLogger("pechi")
 class LoginRequest(BaseModel):
     userId: Optional[str] = "default_user"
     language: Optional[str] = "en"
+    mode: Optional[str] = "full"  # "full" | "transcribe_only"
 
 
 class LoginResponse(BaseModel):
@@ -71,6 +79,7 @@ class JobCardUpdateRequest(BaseModel):
     assigned_technician: Optional[str] = None
     actual_cost: Optional[float] = None
     notes: Optional[str] = None
+    advisor_remarks: Optional[str] = None
 
 
 class ChecklistToggleRequest(BaseModel):
@@ -85,10 +94,14 @@ class ChecklistToggleRequest(BaseModel):
 active_bots: dict[str, ASRBot] = {}
 
 
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("Pechi Service Agent starting...")
     init_database()
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     yield
     for bot in list(active_bots.values()):
         await bot.stop()
@@ -132,8 +145,9 @@ async def login(req: LoginRequest):
 
     # Create and start bot
     lang = req.language or "en"
-    log.info(f"Language: {ASR_LANGUAGES.get(lang, lang)}")
-    bot = ASRBot(room_name, user_id, language=lang)
+    mode = req.mode or "full"
+    log.info(f"Language: {ASR_LANGUAGES.get(lang, lang)}, mode: {mode}")
+    bot = ASRBot(room_name, user_id, language=lang, mode=mode)
     active_bots[user_id] = bot
 
     try:
@@ -205,6 +219,92 @@ async def update_job_card(job_id: int, req: JobCardUpdateRequest):
 async def toggle_checklist(job_id: int, req: ChecklistToggleRequest):
     """Toggle a checklist item on a job card."""
     return update_checklist_item(job_id, req.key, req.checked)
+
+
+# ---------------------------------------------------------------------------
+# Media upload + VLM analysis endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/upload-media")
+async def upload_media(
+    file: UploadFile = File(...),
+    customer_id: Optional[int] = Form(None),
+    vehicle_id: Optional[int] = Form(None),
+    context: Optional[str] = Form(None),
+):
+    """Upload an image for VLM analysis. Saves file, analyzes, stores result."""
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        return {"success": False, "message": f"Invalid file type: {file.content_type}. Allowed: JPEG, PNG, WebP"}
+
+    # Save file with UUID name
+    ext = Path(file.filename or "image.jpg").suffix or ".jpg"
+    file_id = uuid.uuid4().hex
+    file_path = UPLOAD_DIR / f"{file_id}{ext}"
+    content = await file.read()
+    file_path.write_bytes(content)
+    log.info(f"Saved upload: {file_path.name} ({len(content)} bytes)")
+
+    # Analyze with VLM
+    result = await vlm_agent.analyze_image(file_path, context=context or "")
+
+    # Save to database
+    media_id = save_media_analysis(
+        customer_id=customer_id,
+        vehicle_id=vehicle_id,
+        file_path=str(file_path),
+        file_name=file.filename or file_path.name,
+        analysis=result["analysis"],
+        tags=result["tags"],
+        customer_note=context,
+    )
+
+    return {
+        "success": True,
+        "mediaId": media_id,
+        "fileName": file.filename,
+        "analysis": result["analysis"],
+        "tags": result["tags"],
+    }
+
+
+@app.get("/api/media/{customer_id}")
+async def list_media(customer_id: int, vehicle_id: Optional[int] = None):
+    """List all media analyses for a customer."""
+    analyses = get_media_analyses(customer_id, vehicle_id=vehicle_id)
+    return {"success": True, "analyses": analyses}
+
+
+class ReanalyzeRequest(BaseModel):
+    context: str
+
+
+@app.post("/api/media/{media_id}/reanalyze")
+async def reanalyze_media(media_id: int, req: ReanalyzeRequest):
+    """Re-analyze an existing image with customer feedback context."""
+    record = get_media_analysis_by_id(media_id)
+    if not record:
+        return {"success": False, "message": "Media not found"}
+
+    image_path = Path(record["file_path"])
+    if not image_path.exists():
+        return {"success": False, "message": "Image file not found"}
+
+    result = await vlm_agent.analyze_image(image_path, context=req.context)
+
+    update_media_analysis(
+        media_id,
+        analysis=result["analysis"],
+        tags=result["tags"],
+        customer_note=req.context,
+    )
+
+    return {
+        "success": True,
+        "mediaId": media_id,
+        "analysis": result["analysis"],
+        "tags": result["tags"],
+    }
 
 
 if __name__ == "__main__":

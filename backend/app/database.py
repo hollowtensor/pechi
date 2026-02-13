@@ -104,7 +104,20 @@ CREATE TABLE IF NOT EXISTS job_cards (
     started_at TEXT,
     completed_at TEXT,
     status_history TEXT,
-    checklist TEXT
+    checklist TEXT,
+    advisor_remarks TEXT
+);
+
+CREATE TABLE IF NOT EXISTS media_analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER REFERENCES customers(id),
+    vehicle_id INTEGER REFERENCES vehicles(id),
+    file_path TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    customer_note TEXT,
+    analysis TEXT NOT NULL,
+    tags TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 """
 
@@ -400,6 +413,7 @@ def init_database() -> None:
         ("completed_at", "TEXT"),
         ("status_history", "TEXT"),
         ("checklist", "TEXT"),
+        ("advisor_remarks", "TEXT"),
     ]:
         try:
             cur.execute(f"ALTER TABLE job_cards ADD COLUMN {col_name} {col_type}")
@@ -504,6 +518,7 @@ def _seed_job_cards(cur: sqlite3.Cursor) -> None:
                 {"key": "svc_0_Cabin Sanitization", "label": "Cabin Sanitization", "category": "service", "checked": True, "checked_at": (now - timedelta(days=3, hours=5)).isoformat()},
                 {"key": "part_0_Cabin Filter", "label": "Install Cabin Filter", "category": "part", "checked": True, "checked_at": (now - timedelta(days=4, hours=-3)).isoformat()},
             ]),
+            "advisor_remarks": "AC system fully serviced. Refrigerant topped up to optimal level. Cabin filter replaced. Cooling performance verified at 8 degrees. Vehicle washed and ready for delivery.",
         },
         {
             "customer_id": 5, "vehicle_id": 6,
@@ -533,6 +548,7 @@ def _seed_job_cards(cur: sqlite3.Cursor) -> None:
                 {"key": "svc_0_Full Diagnostics", "label": "Full Diagnostics", "category": "service", "checked": True, "checked_at": (now - timedelta(hours=2)).isoformat()},
                 {"key": "part_0_Air Filter", "label": "Install Air Filter", "category": "part", "checked": True, "checked_at": (now - timedelta(hours=6)).isoformat()},
             ]),
+            "advisor_remarks": "Full service completed. Air filter replaced. All systems checked and functioning properly. Vehicle ready for long trip.",
         },
     ]
     for c in cards:
@@ -963,7 +979,7 @@ def advance_job_card_status(job_id: int, new_status: str, notes: str = "") -> di
 
 def update_job_card_fields(job_id: int, fields: dict) -> dict:
     """Update specific mutable fields on a job card."""
-    allowed = {"assigned_technician", "actual_cost", "notes"}
+    allowed = {"assigned_technician", "actual_cost", "notes", "advisor_remarks"}
     filtered = {k: v for k, v in fields.items() if k in allowed}
 
     if not filtered:
@@ -1008,3 +1024,108 @@ def update_checklist_item(job_id: int, item_key: str, checked: bool) -> dict:
     conn.commit()
     conn.close()
     return {"success": True, "checklist": checklist}
+
+
+# ---------------------------------------------------------------------------
+# Media analysis helpers
+# ---------------------------------------------------------------------------
+
+
+def save_media_analysis(
+    customer_id: int | None,
+    vehicle_id: int | None,
+    file_path: str,
+    file_name: str,
+    analysis: str,
+    tags: list[str] | None = None,
+    customer_note: str | None = None,
+) -> int:
+    """Insert a media analysis record. Returns the row ID."""
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO media_analyses
+           (customer_id, vehicle_id, file_path, file_name, customer_note, analysis, tags)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (customer_id, vehicle_id, file_path, file_name, customer_note, analysis, json.dumps(tags) if tags else None),
+    )
+    conn.commit()
+    row_id = cur.lastrowid
+    conn.close()
+    return row_id
+
+
+def get_media_analyses(customer_id: int, vehicle_id: int | None = None) -> list[dict]:
+    """Get all media analyses for a customer, optionally filtered by vehicle."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    sql = "SELECT * FROM media_analyses WHERE customer_id = ?"
+    params: list = [customer_id]
+    if vehicle_id is not None:
+        sql += " AND vehicle_id = ?"
+        params.append(vehicle_id)
+    sql += " ORDER BY created_at DESC"
+
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+    result = []
+    for row in rows:
+        d = dict(row)
+        d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+        result.append(d)
+    conn.close()
+    return result
+
+
+def get_media_analysis_by_id(media_id: int) -> dict | None:
+    """Get a single media analysis record by ID."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM media_analyses WHERE id = ?", (media_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    d["tags"] = json.loads(d["tags"]) if d["tags"] else []
+    return d
+
+
+def update_media_analysis(media_id: int, analysis: str, tags: list[str] | None = None, customer_note: str | None = None) -> bool:
+    """Update an existing media analysis record. Returns True if updated."""
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE media_analyses SET analysis = ?, tags = ?, customer_note = ? WHERE id = ?",
+        (analysis, json.dumps(tags) if tags else None, customer_note, media_id),
+    )
+    conn.commit()
+    updated = cur.rowcount > 0
+    conn.close()
+    return updated
+
+
+def get_media_context_summary(customer_id: int) -> str:
+    """Return a concise text summary of all media analyses for a customer.
+
+    Suitable for injecting into an LLM system prompt as context.
+    """
+    analyses = get_media_analyses(customer_id)
+    if not analyses:
+        return ""
+
+    lines = []
+    for a in analyses:
+        tags_str = ", ".join(a["tags"]) if a["tags"] else ""
+        header = f"- Image \"{a['file_name']}\""
+        if tags_str:
+            header += f" [{tags_str}]"
+        header += f" ({a['created_at']}):"
+        lines.append(header)
+        if a.get("customer_note"):
+            lines.append(f"  Customer said: \"{a['customer_note']}\"")
+        lines.append(f"  Analysis: {a['analysis']}")
+    return "\n".join(lines)

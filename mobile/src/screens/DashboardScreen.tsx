@@ -74,7 +74,7 @@ export function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.surfaceBorder }]}
-            onPress={goJobCards}
+            onPress={() => goJobCards()}
             activeOpacity={0.7}
           >
             <Ionicons name="clipboard-outline" size={28} color={colors.text} style={styles.actionIcon} />
@@ -90,7 +90,7 @@ export function DashboardScreen() {
           <View style={styles.recentSection}>
             <View style={styles.recentHeader}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Job Cards</Text>
-              <TouchableOpacity onPress={goJobCards}>
+              <TouchableOpacity onPress={() => goJobCards()}>
                 <Text style={[styles.seeAll, { color: colors.accent }]}>See All</Text>
               </TouchableOpacity>
             </View>

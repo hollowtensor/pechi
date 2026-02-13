@@ -21,7 +21,7 @@ from .config import (
     SUMMARIZE_THRESHOLD,
     TOOL_RESULT_MAX_CHARS,
 )
-from .database import execute_safe_query_structured, get_schema_description, build_job_card_data
+from .database import execute_safe_query_structured, get_schema_description, build_job_card_data, get_media_context_summary
 
 log = logging.getLogger("llm_agent")
 
@@ -99,6 +99,14 @@ Your role:
 - Explain service packages and recommendations
 - Answer questions about their vehicles
 - Help customers book/schedule services
+- Analyze and discuss vehicle images uploaded by customers
+
+Image analysis:
+- Customers can upload photos of their vehicle (damage, warning lights, parts, etc.)
+- These images are automatically analyzed by a vision system and the analysis is provided to you below as "Customer uploaded images"
+- When image analysis is available, USE it to understand what the customer is showing you. Refer to the details from the analysis — describe the damage, identify affected parts, suggest severity, and recommend next steps
+- You CAN see and understand images through the vision analysis. Never say "I can't view images" — the vision system has already analyzed them for you
+- If the customer provides additional feedback about an image, the analysis may be updated with more context
 
 Guidelines:
 - Be polite, concise, and helpful
@@ -254,6 +262,8 @@ class LLMAgent:
         self.history: list[dict] = []
         self.summary: str = ""
         self.customer_context: str = ""
+        self.media_context: str = ""
+        self._customer_id: int | None = None
         self.http = httpx.AsyncClient(
             base_url=LM_STUDIO_URL,
             timeout=httpx.Timeout(60.0, connect=10.0),
@@ -307,13 +317,16 @@ class LLMAgent:
     # ------------------------------------------------------------------
 
     def _build_system_prompt(self) -> str:
-        """Build system prompt with optional customer context and summary."""
+        """Build system prompt with optional customer context, media context, and summary."""
         now = datetime.now()
         time_str = now.strftime("%I:%M %p, %A, %B %d, %Y")
         parts = [BASE_SYSTEM_PROMPT, f"\nCurrent date and time: {time_str}"]
 
         if self.customer_context:
             parts.append(f"\nIdentified customer:\n{self.customer_context}")
+
+        if self.media_context:
+            parts.append(f"\nCustomer uploaded images (analyzed by vision system):\n{self.media_context}")
 
         if self.summary:
             parts.append(f"\nConversation summary so far:\n{self.summary}")
@@ -392,7 +405,7 @@ class LLMAgent:
     # Customer context extraction
     # ------------------------------------------------------------------
 
-    def _try_extract_customer_context(self, tool_result: str):
+    def _try_extract_customer_context(self, tool_result: str, structured_rows: list[dict] | None = None):
         """Try to extract customer identity from a DB query result."""
         if self.customer_context:
             return  # already have it
@@ -407,6 +420,37 @@ class LLMAgent:
             context_lines = lines[:min(6, len(lines))]  # cap at 5 data rows
             self.customer_context = "\n".join(context_lines)
             log.info(f"Extracted customer context: {self.customer_context[:100]}...")
+
+            # Try to extract customer_id and load media context
+            if structured_rows and not self._customer_id:
+                for row in structured_rows:
+                    cid = row.get("customer_id") or row.get("id")
+                    if cid and "name" in row:
+                        self._customer_id = int(cid)
+                        self._load_media_context()
+                        break
+
+    def _load_media_context(self):
+        """Load media analysis summaries for the identified customer."""
+        if not self._customer_id:
+            return
+        summary = get_media_context_summary(self._customer_id)
+        if summary:
+            self.media_context = summary
+            log.info(f"Loaded media context for customer {self._customer_id}: {len(summary)} chars")
+
+    def inject_media_context(self, analysis: str, tags: list[str] | None = None):
+        """Inject a VLM image analysis directly into the agent's media context."""
+        tags_str = ", ".join(tags) if tags else ""
+        entry = f"- {analysis}"
+        if tags_str:
+            entry += f" [Tags: {tags_str}]"
+
+        if self.media_context:
+            self.media_context += f"\n{entry}"
+        else:
+            self.media_context = entry
+        log.info(f"Injected media context: {len(analysis)} chars, {len(tags or [])} tags")
 
     # ------------------------------------------------------------------
     # Chat
@@ -460,7 +504,7 @@ class LLMAgent:
                             log.info(f"Query result: {full_result[:200]}...")
 
                             # Try to extract customer context from results
-                            self._try_extract_customer_context(full_result)
+                            self._try_extract_customer_context(full_result, result.get("rows"))
 
                             # Send structured data to frontend as side panel
                             if result["rows"] and self.send_data_callback:
@@ -560,6 +604,8 @@ class LLMAgent:
         self.history = []
         self.summary = ""
         self.customer_context = ""
+        self.media_context = ""
+        self._customer_id = None
 
     async def close(self):
         """Close HTTP and Redis clients."""

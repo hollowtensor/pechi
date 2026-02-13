@@ -23,23 +23,25 @@ const SEGMENTS = {
 interface Props {
   connected: boolean;
   connecting: boolean;
+  micActive: boolean;
   appState: AppState;
   onPress: () => void;
 }
 
-export function MicButton({ connected, connecting, appState, onPress }: Props) {
+export function MicButton({ connected, connecting, micActive, appState, onPress }: Props) {
   const { colors } = useTheme();
   const lottieRef = useRef<LottieView>(null);
   const prevStateRef = useRef<string>('idle');
 
   const getStateKey = useCallback((): string => {
-    if (!connected && !connecting) return 'idle';
     if (connecting) return 'connecting';
+    if (!connected) return 'idle';
+    if (!micActive) return 'idle';
     if (appState === 'listening' || appState === 'transcribing') return 'listening';
     if (appState === 'thinking') return 'thinking';
     if (appState === 'result') return 'result';
     return 'connected';
-  }, [connected, connecting, appState]);
+  }, [connected, connecting, micActive, appState]);
 
   useEffect(() => {
     const anim = lottieRef.current;
@@ -76,13 +78,13 @@ export function MicButton({ connected, connecting, appState, onPress }: Props) {
   const shouldLoop = stateKey === 'connecting' || stateKey === 'listening' || stateKey === 'thinking';
 
   // Outer ring color for visual feedback
-  const ringColor = connected ? colors.accent : 'transparent';
+  const ringColor = micActive ? colors.accent : 'transparent';
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.8} disabled={connecting}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} disabled={connecting || !connected}>
       <View style={styles.container}>
-        {/* Subtle accent ring when connected */}
-        {connected && (
+        {/* Subtle accent ring when mic is active */}
+        {micActive && (
           <View style={[styles.ring, { borderColor: ringColor }]} />
         )}
         <LottieView

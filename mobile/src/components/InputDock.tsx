@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { StatusIndicator } from './StatusIndicator';
@@ -10,19 +11,27 @@ import { spacing, borderRadius } from '../constants/theme';
 interface Props {
   connected: boolean;
   connecting: boolean;
+  micActive: boolean;
   status: string;
   appState: AppState;
   onMicPress: () => void;
   onSendText: (text: string) => void;
+  onAttachImage?: () => void;
+  replyToImage?: { uri: string } | null;
+  onCancelReply?: () => void;
 }
 
 export function InputDock({
   connected,
   connecting,
+  micActive,
   status,
   appState,
   onMicPress,
   onSendText,
+  onAttachImage,
+  replyToImage,
+  onCancelReply,
 }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -50,7 +59,37 @@ export function InputDock({
     >
       <StatusIndicator connected={connected} status={status} />
 
+      {/* Reply indicator */}
+      {replyToImage && (
+        <View style={[styles.replyBar, { backgroundColor: colors.surface, borderColor: colors.accentBorder }]}>
+          <View style={[styles.replyAccent, { backgroundColor: colors.accent }]} />
+          <Image source={{ uri: replyToImage.uri }} style={styles.replyThumb} />
+          <View style={styles.replyTextContainer}>
+            <Text style={[styles.replyLabel, { color: colors.accent }]}>Replying to image</Text>
+            <Text style={[styles.replyHint, { color: colors.textMuted }]}>
+              {micActive ? 'Speak or type your feedback' : 'Type your feedback'}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={onCancelReply} hitSlop={12}>
+            <Ionicons name="close" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.inputRow}>
+        <TouchableOpacity
+          style={[
+            styles.attachBtn,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.surfaceBorder,
+            },
+          ]}
+          onPress={onAttachImage}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="camera-outline" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
         <TextInput
           style={[
             styles.textInput,
@@ -60,7 +99,7 @@ export function InputDock({
               backgroundColor: colors.surface,
             },
           ]}
-          placeholder="Type a message..."
+          placeholder={replyToImage ? 'Describe the issue...' : 'Type a message...'}
           placeholderTextColor={colors.textMuted}
           value={text}
           onChangeText={setText}
@@ -94,6 +133,7 @@ export function InputDock({
       <MicButton
         connected={connected}
         connecting={connecting}
+        micActive={micActive}
         appState={appState}
         onPress={onMicPress}
       />
@@ -108,12 +148,51 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: 1,
   },
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  replyAccent: {
+    width: 3,
+    alignSelf: 'stretch',
+  },
+  replyThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 4,
+    marginLeft: spacing.sm,
+    marginVertical: spacing.xs,
+  },
+  replyTextContainer: {
+    flex: 1,
+    paddingHorizontal: spacing.sm,
+  },
+  replyLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  replyHint: {
+    fontSize: 11,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
     gap: spacing.sm,
     marginBottom: spacing.xs,
+  },
+  attachBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   textInput: {
     flex: 1,
